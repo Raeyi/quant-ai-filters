@@ -13,9 +13,9 @@
 #include "AccountRisk.mqh"
 #include "PositionSizer.mqh" 
 #include "LosingStreakGuard.mqh"
+#include "RiskStatus.mqh"
 
-input int MaxHoldingBars  = 6;   // 最大持仓时间（bar 数）
-input int CooldownSeconds = 60;  // 冷却时间（秒）
+input int CooldownSeconds = 60;  // 每次交易后冷却时间（秒）
 
 class RiskPipeline
 {
@@ -27,12 +27,14 @@ private:
     Cooldown     cooldown;       // 冷却
     PositionSizer position_sizer;  // 手数计算器
     LosingStreakGuard losing_guard; // 连续亏损保护
+    bool allow_entry;
+    bool in_cooldown;
 
 public:
     void Init()
     {
         account_risk.Init();
-        time_stop.Init(MaxHoldingBars);
+        time_stop.Init(position_risk.maxHoldingBars); // 用 PositionRisk 的 maxHoldingBars 初始化 TimeStop
         cooldown.Init(CooldownSeconds);
     }
 
@@ -49,7 +51,7 @@ public:
             return false;
         }
 
-        if(!cooldown.CanTrade())
+        if(!cooldown.CanTrade()) // 每次交易后冷却判断
         {
             Print("[RiskPipeline] In cooldown, skip new trade");
             return false;
@@ -74,17 +76,35 @@ public:
         req.source = signal.source;
         return true;
     }
+
+    //  获取当前风险状态
+    RiskStatus GetStatus() const
+   {
+      RiskStatus rs;
+      rs.allow_entry = allow_entry;
+      rs.in_cooldown = in_cooldown;
+      return rs;
+   }
+
     // 是否需要平仓（时间止损 + PositionRisk 自身逻辑）
-    bool ShouldClosePosition()
+    bool ShouldClosePosition(const Signal &signal)
     {
-        // 1) 基于 bar 的时间止损
+        //  策略级退出（主动型）
+        if(signal.type == SIGNAL_EXIT)
+        {
+            Print("[RiskPipeline] " + "[" + signal.source + "] Strategy exit accepted");
+            position_risk.OnStrategyExit(); // 可选：用于统计
+            return true;
+        }
+
+        //  基于 bar 的时间止损
         if(time_stop.ShouldClose())
         {
             Print("[RiskPipeline] TimeStop.ShouldClose() = true");
             return true;
         }
 
-        // 2) PositionRisk 补充的其他条件（当前是 MaxHoldMinutes）
+        // PositionRisk 补充的其他条件（当前是 MaxHoldMinutes）
         if(position_risk.ShouldForceClose())
         {
             Print("[RiskPipeline] PositionRisk.ShouldForceClose() = true");

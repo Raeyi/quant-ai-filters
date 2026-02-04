@@ -35,23 +35,25 @@ public:
       strategies[count++] = strategy;
    }
 
-   bool GetSignal(Signal &outSignal)
+   Signal StrategyManager::GetSignal()
    {
       // Print("[StrategyManager] GetSignal called. count=", count);
       for(int i = 0; i < count; i++)
       {
          if(strategies[i] == NULL)
             continue;
-
-         // 注意：MQL5 指针也用点号调用方法
-         if(strategies[i].GenerateSignal(outSignal))
+         
+         Signal sig;
+         sig = strategies[i].GenerateSignal(sig);
+         
+          if(sig.type != SIGNAL_NONE)
          {
-            if(outSignal.source == "")
-               outSignal.source = strategies[i].Name();
-            return true;
+               Print("[StrategyManager] Signal from strategy ", sig.source,
+                     " type=", sig.type);
+               return sig;
          }
       }
-      return false;
+      return Signal(); // NONE
    }
 };
 

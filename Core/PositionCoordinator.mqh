@@ -27,17 +27,22 @@ public:
       current_source = "";
    }
 
+   bool HasPosition()    // 检查是否有持仓
+    {
+        return PositionSelect(_Symbol);
+    }
+
    // 在每次 OnTick 可以调用一次，和真实仓位同步（防断线/手动平仓）
    void SyncFromTerminal()
    {
-      if(!PositionSelect(_Symbol))
+      if(!HasPosition()) // 无持仓
       {
          current_side   = POS_NONE;
          current_source = "";
          return;
       }
 
-      long  type = PositionGetInteger(POSITION_TYPE);
+      long  type = PositionGetInteger(POSITION_TYPE); // 获取仓位类型
       if(type == POSITION_TYPE_BUY)
          current_side = POS_LONG;
       else if(type == POSITION_TYPE_SELL)
@@ -78,6 +83,32 @@ public:
    {
       current_side   = POS_NONE;
       current_source = "";
+   }
+
+   // ===== 新增：给 UI 用 =====
+   bool IsLong() const
+   {
+      if(!PositionSelect(_Symbol))
+         return false;
+
+      long type = PositionGetInteger(POSITION_TYPE);
+      return type == POSITION_TYPE_BUY;
+   }
+
+   double Volume() const
+   {
+      if(!PositionSelect(_Symbol))
+         return 0.0;
+
+      return PositionGetDouble(POSITION_VOLUME);
+   }
+
+   double FloatingProfit() const
+   {
+      if(!PositionSelect(_Symbol))
+         return 0.0;
+
+      return PositionGetDouble(POSITION_PROFIT);
    }
 };
 

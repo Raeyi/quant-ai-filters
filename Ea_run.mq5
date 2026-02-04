@@ -32,25 +32,24 @@
 #include "Core/ConfidenceFilter.mqh"
 #include "Core/AIDecisionGateway.mqh"
 
+//  UI 状态面板
+#include "Core/UI/StatusPanel.mqh"
+
 // 特征导出（如果还需要）
 // #include "Utils/Export.mqh"
 
-//---------------- 输入参数 ----------------
-input int    InpCooldownBars  = 5;    // 冷却周期（bar 数，后续可接入 Cooldown）
-input int    BollPeriod       = 20;   // 布林带周期
-input double BollDev          = 2.0;  // 布林带标准差
-input int    ATRPeriod        = 14;   // ATR 周期
-
 //---------------- 全局对象 ----------------
-StrategyManager     manager;
-Strategy_BollMR     boll;
+StrategyManager     manager; // 策略管理器
+Strategy_BollMR     boll; // Bollinger 均值回归策略
 
-TradeExecutor       executor;
-RiskPipeline        risk_pipeline;
-PositionCoordinator pos_coord;
+TradeExecutor       executor; // 交易执行器
+RiskPipeline        risk_pipeline; // 风控管道
+PositionCoordinator pos_coord; // 单品种单向一仓
 
-AIDecisionGateway   ai_gateway;
-ConfidenceFilter    conf_filter;
+AIDecisionGateway   ai_gateway; // AI 决策网关
+ConfidenceFilter    conf_filter; // 置信度过滤器
+
+StatusPanel status_panel; // 状态面板
 
 // 指标导出文件句柄（如果需要导出 features）
 int g_file = INVALID_HANDLE;
@@ -73,24 +72,17 @@ int OnInit()
 {
    Print("EA Init start");
 
-   // 1. 指标初始化
-   if(!InitBollinger(BollPeriod, BollDev))
-   {
-      Print("Bollinger init failed");
-      return INIT_FAILED;
-   }
+   status_panel.Init(); // 初始化状态面板
 
-   if(!InitATR(ATRPeriod))
-   {
-      Print("ATR init failed");
-      return INIT_FAILED;
-   }
-
-   Print("Indicators init OK");
-
-   // 2. 策略管理器：挂上 Bollinger 策略
+   // 1. 策略管理器：挂上 Bollinger 策略
    manager.Add(&boll);
 
+   // 2. 初始化策略
+    if(!boll.Init())
+    {
+        Print("Failed to initialize BollMR strategy");
+        return INIT_FAILED;
+    }
    // 3. 风控管道初始化
    risk_pipeline.Init();
 
@@ -121,20 +113,13 @@ int OnInit()
 //---------------- Tick 驱动 ----------------
 void OnTick()
 {
-   // 0. 只在新 bar 上做决策（沿用你原逻辑）
+   // 只在新 bar 上做决策
    if(!IsNewBar())
       return;
 
-   // 1. 每个 bar 更新指标缓存（这一步是之前缺失的关键）
-   if(!UpdateBollinger())
+   // 指标数据更新
+   if(!boll.UpdateIndicators())
    {
-      Print("UpdateBollinger FAILED");
-      return;
-   }
-
-   if(!UpdateATR(50))   // 取最近 50 根，足够你用 shift 0/1 和平均
-   {
-      Print("UpdateATR FAILED");
       return;
    }
 
@@ -142,18 +127,30 @@ void OnTick()
    // Print("BollLower0=", GetBollLower(0), " BollLower1=", GetBollLower(1),
    //       " ATR1=", GetATR(1));
 
-   // 2. 同步当前仓位状态
-   pos_coord.SyncFromTerminal();
+   pos_coord.SyncFromTerminal(); // 同步仓位状态
 
-   // 3. 策略层获取信号
-   Signal signal;
-   if(manager.GetSignal(signal))
+   Signal signal; // 声明信号变量
+   signal = manager.GetSignal(); // 获取策略信号
+
+   if(pos_coord.HasPosition()) // 如果当前有仓位
    {
-      Print("[EA] Got signal: type=", signal.type,
-            " price=", DoubleToString(signal.price,_Digits),
-            " source=", signal.source,
-            " conf=", DoubleToString(signal.confidence,2));
+      bool should_close = risk_pipeline.ShouldClosePosition(signal);
+      if(should_close) //需要平仓
+      {
+         if(executor.Close())
+         {
+            risk_pipeline.OnPositionClosed();  // 通知 RiskPipeline 有一笔平仓
+            pos_coord.OnPositionClosed();      // 仓位协调器更新状态
+         }
+         else
+         {
+            Print("[EA] ", signal.source, " Failed to close position when requested.");
+         }
+      }
+   }
 
+   if(signal.type != SIGNAL_NONE && signal.type != SIGNAL_EXIT) // 如果有开仓信号
+   {
       // 3.1 多策略冲突仲裁：单品种单向一仓
       if(!pos_coord.AllowSignal(signal))
       {
@@ -181,7 +178,7 @@ void OnTick()
                      " tp=", DoubleToString(req.tp,_Digits));
 
                // 3.4 执行下单
-               if(executor.Execute(req))
+               if(executor.Execute(req, signal.source))
                {
                   Print("[EA] Order executed.");
                   risk_pipeline.OnTradeExecuted();
@@ -193,18 +190,6 @@ void OnTick()
                Print("[EA] RiskPipeline.BuildTrade returned false");
             }
          }
-      }
-   }
-   // else
-   //    Print("[EA] No strategy signal on this bar");
-
-   // 4. 持仓期间平仓判断
-   if(risk_pipeline.ShouldClosePosition())
-   {
-      if(executor.Close())
-      {
-         risk_pipeline.OnPositionClosed();  // 通知 RiskPipeline 有一笔平仓
-         pos_coord.OnPositionClosed();      // 仓位协调器更新状态
       }
    }
 
@@ -223,6 +208,8 @@ void OnTick()
                 DoubleToString(bl,_Digits),
                 DoubleToString(atr1,_Digits));
    }
+
+   status_panel.Update(risk_pipeline, pos_coord); // 更新状态面板
 }
 
 //---------------- 反初始化 ----------------

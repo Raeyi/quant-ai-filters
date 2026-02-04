@@ -6,7 +6,7 @@
 #define __LOSING_STREAK_GUARD_MQH__
 
 input int MaxLosingStreak   = 3;   // 连续亏损次数阈值
-input int CooldownBarsAfter = 5;   // 触发后冷却的bar数
+input int CooldownBarsAfter = 5;   // 达到连续亏损触发后冷却的bar数
 
 class LosingStreakGuard
 {

@@ -12,7 +12,8 @@ enum SignalType
 {
     SIGNAL_NONE = 0,
     SIGNAL_BUY,
-    SIGNAL_SELL
+    SIGNAL_SELL,
+    SIGNAL_EXIT
 };
 
 // 信号结构体定义

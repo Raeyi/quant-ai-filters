@@ -6,10 +6,6 @@
 #ifndef __BOLLINGER_MQH__
 #define __BOLLINGER_MQH__
 
-input int    BOLL_PERIOD    = 20;    // Bollinger Bands 周期
-input double BOLL_DEVIATION = 2.0;   // 偏差
-
-
 //--------------------------------------------------
 // Handle & buffers
 //--------------------------------------------------

@@ -16,15 +16,39 @@ private:
     CTrade trade;
 
 public:
-    bool Execute(const TradeRequest &req)
+    bool Execute(const TradeRequest &req, const string &source)
     {
         if(PositionSelect(_Symbol))
             return false;
-
+        
         if(req.direction == TRADE_BUY)
-            return trade.Buy(req.volume, _Symbol, 0, req.sl, req.tp);
+        {
+            trade.SetDeviationInPoints(20); // 设置滑点
+
+            bool ok = trade.Buy(req.volume, _Symbol, 0, req.sl, req.tp);
+
+            if(!ok)
+            {
+                Print("[" + source + "] Failed to execute Buy order");
+                return false;
+            }
+
+            return ok;
+        }
         else
-            return trade.Sell(req.volume, _Symbol, 0, req.sl, req.tp);
+        {
+            trade.SetDeviationInPoints(20); // 设置滑点
+            bool ok = trade.Sell(req.volume, _Symbol, 0, req.sl, req.tp);
+
+            if(!ok)
+            {
+                Print("[" + source + "] Failed to execute Sell order");
+                return false;
+            }
+
+            return ok;
+        }
+            
     }
 
     bool Close()

@@ -7,14 +7,26 @@
 #ifndef __RISK_POSITION_RISK_MQH__
 #define __RISK_POSITION_RISK_MQH__ 
 
-input int MaxHoldMinutes = 180;   // 最大持仓时间（分钟）
+#include "TimeStop.mqh"
+
+input int MaxHoldingBars = 5;   // 最大持仓时间（bar 数）
 
 class PositionRisk
 {
 private:
     datetime entryTime; // 持仓时间
+    TimeStop     time_stop;      // 时间止损（bar 数）
+    
+public:
+    int     maxHoldingBars; // 最大持仓时间（bar 数）
 
 public:
+    PositionRisk()
+    {
+        entryTime       = 0;
+        maxHoldingBars  = MaxHoldingBars;
+        time_stop.Init(maxHoldingBars);
+    }
     bool HasPosition()    // 检查是否有持仓
     {
         return PositionSelect(_Symbol);
@@ -35,6 +47,10 @@ public:
         entryTime = TimeCurrent();
     }
 
+    void OnStrategyExit() // 策略退出时清除持仓时间
+    {
+        return;
+    }
 
     bool ShouldForceClose() // 检查是否需要强制平仓
     {
@@ -56,14 +72,18 @@ public:
         return false;
     }
 
-    private:
+private:
     bool IsTimeExceeded()
     {
         if(entryTime <= 0)
             return false;
 
-        int heldMinutes = int((TimeCurrent() - entryTime) / 60);
-        return heldMinutes >= MaxHoldMinutes;
+        if(time_stop.ShouldClose())
+        {
+            return true;
+        }
+
+        return false;
     }
 };
 

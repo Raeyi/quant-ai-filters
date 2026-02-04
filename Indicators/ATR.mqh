@@ -6,8 +6,6 @@
 #ifndef __ATR_MQH__
 #define __ATR_MQH__
 
-input int ATR_PERIOD = 14; // ATR 周期
-
 // === ATR Indicator Handle ===
 int hATR = INVALID_HANDLE;  // ATR 指标句柄
 double hBuffer[];          // ATR 数据缓存
