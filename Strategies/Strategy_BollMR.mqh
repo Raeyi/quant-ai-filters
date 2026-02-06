@@ -19,6 +19,7 @@ input double    VolATRSL          = 2.0;  // 波动止损 ATR
 input double    BoolMidATRTP         = 0.2;  // 均值回归止盈 ATR 倍数
 input double    BoolUplowATRTP         = 0.1;  //  上轨/下轨止盈 ATR 倍数
 input int    MAPeriod = 50;              // MA周期
+input string boll_entry_mode = "A"; // 入场模式：A / B / C
 
 class Strategy_BollMR : public IStrategy
 {
@@ -49,6 +50,13 @@ public:
         return true;
     }
     
+    enum ENUM_TREND_STATE
+                {
+                    TREND_BULL,      // 明确多头
+                    TREND_FLAT,      // 震荡 / 弱多
+                    TREND_BEAR       // 空头
+                };
+
     // 更新指标数据
     bool UpdateIndicators()
     {          
@@ -77,8 +85,8 @@ public:
 
     Signal GenerateSignal(Signal &signal) override
     {
-        bool longSig  = LongSignal();
-        bool shortSig = ShortSignal();
+        bool longSig  = LongSignal(boll_entry_mode);
+        bool shortSig = ShortSignal(boll_entry_mode);
         bool exitSig = HasExitSignal();
 
         if(!PositionSelect(_Symbol)) // 无持仓
@@ -125,30 +133,115 @@ public:
     }
 
 public:
-    bool LongSignal()
+    bool LongSignal(string mode)
     {   
         if(!TimeFilterOK())
             return false;
-        if(!LongTrendOK())
-            return false;
 
-        return (CloseAt(1) < GetBollLower(1) &&
-                CloseAt(0) > GetBollLower(0) && 
-                MiddleUp() && 
+        if(mode == "A") // 严格确认回归（基准版）
+        {
+            if(!LongTrendOK())
+                return false;
+            return (CloseAt(1) < GetBollLower(1) &&
+                    CloseAt(0) > GetBollLower(0) && 
+                    MiddleUp() && 
+                    VolatilityOK());
+        }
+        else if(mode == "B") // 放宽入场条件，允许直接在下轨附近入场（影线回归增强版，更激进，但可能更早捕捉机会）
+        {
+            if(!LongTrendOK())
+                return false;
+            bool wick_break = LowAt(1) < GetBollLower(1);   // 影线破下轨
+
+            bool close_recover = CloseAt(0) > GetBollLower(0); // 当前K线收回轨内
+
+            return (
+                    wick_break &&
+                    close_recover &&
+                    MiddleUp() &&
+                    VolatilityOK());
+        }
+        else if(mode == "C")
+        {
+            ENUM_TREND_STATE trend = GetTrendState();
+
+            // 只要不是明确空头，就允许做回归
+            if(trend == TREND_BEAR)
+                return false;
+
+            return (
+                CloseAt(1) < GetBollLower(1) &&
+                CloseAt(0) > GetBollLower(0) &&
                 VolatilityOK());
+        }
+        else
+        {
+            Print("[BollMR] Invalid entry mode: ", mode);
+            return false;
+        }
     }
 
-    bool ShortSignal()
+    ENUM_TREND_STATE GetTrendState()
     {
-         if(!TimeFilterOK())
-            return false;
-        if(!ShortTrendOK())
+        double ma_now  = GetMA(0);
+        double ma_prev = GetMA(1);
+
+        // 明确多头
+        if(ma_now > ma_prev && MiddleUp())
+            return TREND_BULL;
+
+        // 明确空头
+        if(ma_now < ma_prev && MiddleDown())
+            return TREND_BEAR;
+
+        // 其余情况视为震荡
+        return TREND_FLAT;
+    }
+
+    bool ShortSignal(string mode)
+    {
+        if(!TimeFilterOK())
             return false;
 
-        return (CloseAt(1) > GetBollUpper(1) &&
-                CloseAt(0) < GetBollUpper(0) && 
-                MiddleDown() && 
+        if(mode == "A") // 严格确认回归（基准版）
+        {
+            if(!ShortTrendOK())
+                return false;
+            return (CloseAt(1) > GetBollUpper(1) &&
+                    CloseAt(0) < GetBollUpper(0) && 
+                    MiddleDown() && 
+                    VolatilityOK());
+        }
+        else if(mode == "B") // 放宽入场条件，允许直接在上轨附近入场（影线回归增强版，更激进，但可能更早捕捉机会）
+        {
+            bool wick_break = HighAt(1) > GetBollUpper(1);   // 影线破上轨
+
+            bool close_recover = CloseAt(0) < GetBollUpper(0); // 当前K线收回轨内
+
+            return (
+                    wick_break &&
+                    close_recover &&
+                    MiddleDown() &&
+                    VolatilityOK());
+        }
+        else if(mode == "C")
+        {
+            ENUM_TREND_STATE trend = GetTrendState();
+
+            // 只要不是明确多头，就允许做回归
+            if(trend == TREND_BULL)
+                return false;
+
+            return (
+                CloseAt(1) > GetBollUpper(1) &&
+                CloseAt(0) < GetBollUpper(0) &&
                 VolatilityOK());
+        }
+        else
+        {
+            Print("[BollMR] Invalid entry mode: ", mode);
+            return false;
+        }
     }
 
     void FillSignal(Signal &s, SignalType type)
@@ -198,22 +291,31 @@ public:
         }
     }
 
-    double CloseAt(int shift)
+    double LowAt(int shift) // 取当前 K 线的下影线价格
+    {
+        return iLow(_Symbol, _Period, shift);
+    }
+
+    double HighAt(int shift) // 取当前 K 线的上影线价格
+    {
+        return iHigh(_Symbol, _Period, shift);
+    }
+    double CloseAt(int shift) // 取当前 K 线的收盘价
     {
         return iClose(_Symbol, _Period, shift);
     }
 
-    bool MiddleUp()
+    bool MiddleUp() // 中轨向上（当前 K 线的中轨高于上一根 K 线的中轨）
     {
         return GetBollMiddle(0) >= GetBollMiddle(1);
     }
 
-    bool MiddleDown()
+    bool MiddleDown() // 中轨向下（当前 K 线的中轨低于上一根 K 线的中轨）
     {
         return GetBollMiddle(0) <= GetBollMiddle(1);
     }
 
-    bool VolatilityOK()
+    bool VolatilityOK() // 波动率过滤：当前 ATR 不超过过去 10 根 ATR 平均的 1.5 倍
     {
         double atr_now = GetATR(1);
         double atr_avg = GetATRMean(10, 1);
@@ -225,22 +327,24 @@ public:
         return true;
     }
 
-    bool ConfirmedReentryLong()
+    bool ConfirmedReentryLong() // 确认回归多头：先出现下轨外 K 线，然后再回到轨内
     {
         return (CloseAt(1) < GetBollLower(1) &&
                 CloseAt(0) > GetBollLower(0));
     }
 
-    bool ConfirmedReentryShort()
+    bool ConfirmedReentryShort() // 确认回归空头：先出现上轨外 K 线，然后再回到轨内
     {
         return (CloseAt(1) > GetBollUpper(1) &&
                 CloseAt(0) < GetBollUpper(0));
     }
 
-    bool LongTrendOK()
+    bool LongTrendOK() // 长期趋势过滤：H1 均线向上且斜率不大（排除明显的单边趋势）
     {
         double ma0  = GetMA(0);
         double ma10 = GetMA(10);
+
+        // Print("[BollMR] LongTrendOK: ma0=", ma0, ", ma10=", ma10);
 
         if(ma0 == 0 || ma10 == 0)
             return false;
@@ -296,6 +400,7 @@ public:
             if(hour < boll_Allowed_transaction_start_time && hour >= boll_Allowed_transaction_end_time)
                 return false;
         }
+        // Print("[BollMR] Time filter passed. Current hour: ", hour);
         return true;
     }
 

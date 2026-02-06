@@ -40,7 +40,8 @@ public:
 
     // 信号 -> 风控 -> 生成 TradeRequest
     bool BuildTrade(const Signal &signal, TradeRequest &req)
-    {
+    {   
+        // PrintFormat("[RiskPipeline] BuildTrade called for signal type=%d, price=%.5f", signal.type, signal.price);
         if(!account_risk.AllowTrading())
             return false;
 
