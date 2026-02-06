@@ -1,1 +1,7 @@
 .vscode/
+Python/data/*.parquet
+Python/data/*.csv
+Python/data/*.json
+*.ex5
+Python/venv/
+__pycache__/
