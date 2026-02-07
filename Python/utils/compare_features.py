@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import pandas as pd
+
+from indicators.atr import atr
+from indicators.bollinger import bollinger_bands
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Compare MT5 vs Python features")
+    parser.add_argument("--mt5", required=True, help="MT5 features.csv path")
+    parser.add_argument("--data", required=True, help="Python OHLC CSV (same source as MT5)")
+    parser.add_argument("--out", default="", help="Optional diff CSV output path")
+    parser.add_argument("--boll-period", type=int, default=20)
+    parser.add_argument("--boll-dev", type=float, default=2.0)
+    parser.add_argument("--atr-period", type=int, default=14)
+    parser.add_argument("--tz", default="", help="Optional timezone for parsing time")
+    return parser.parse_args()
+
+
+def _read_mt5(path: str) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    if "time" not in df.columns:
+        raise ValueError("MT5 features must include 'time' column")
+    df["time"] = pd.to_datetime(df["time"], errors="coerce")
+    df = df.set_index("time")
+    return df
+
+
+def _read_ohlc(path: str, tz: str) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    if "time" in df.columns:
+        df["time"] = pd.to_datetime(df["time"], errors="coerce")
+        df = df.set_index("time")
+    else:
+        # try common MT5 export columns
+        if "Date" in df.columns and "Time" in df.columns:
+            df["time"] = pd.to_datetime(df["Date"] + " " + df["Time"], errors="coerce")
+            df = df.set_index("time")
+        else:
+            raise ValueError("OHLC CSV must include time or Date+Time columns")
+    if tz:
+        df.index = df.index.tz_localize(tz).tz_convert(None)
+    return df
+
+
+def main() -> None:
+    args = _parse_args()
+    mt5 = _read_mt5(args.mt5)
+    ohlc = _read_ohlc(args.data, args.tz)
+
+    bands = bollinger_bands(ohlc["close"], args.boll_period, args.boll_dev)
+    atr_series = atr(ohlc, args.atr_period)
+
+    py = pd.DataFrame(
+        {
+            "close": ohlc["close"],
+            "boll_u": bands["upper"],
+            "boll_l": bands["lower"],
+            "atr": atr_series,
+        },
+        index=ohlc.index,
+    )
+
+    merged = mt5.join(py, how="inner", lsuffix="_mt5", rsuffix="_py")
+    if merged.empty:
+        raise ValueError("No overlapping timestamps between MT5 and Python features")
+
+    for col in ("close", "boll_u", "boll_l", "atr"):
+        merged[f"{col}_diff"] = merged[f"{col}_py"] - merged[f"{col}_mt5"]
+
+    summary = {}
+    for col in ("close", "boll_u", "boll_l", "atr"):
+        diff = merged[f"{col}_diff"].abs()
+        summary[col] = {
+            "mean_abs": float(diff.mean()),
+            "max_abs": float(diff.max()),
+            "p95_abs": float(diff.quantile(0.95)),
+        }
+
+    print("Feature diff summary:")
+    for col, stats in summary.items():
+        print(f"  {col}: mean_abs={stats['mean_abs']:.6f} p95_abs={stats['p95_abs']:.6f} max_abs={stats['max_abs']:.6f}")
+
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        merged.reset_index().to_csv(out_path, index=False)
+        print(f"Saved diff: {out_path}")
+
+
+if __name__ == "__main__":
+    main()
