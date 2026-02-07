@@ -217,6 +217,8 @@ INDEX_HTML = r"""<!doctype html>
           <div>
             <label>Data (CSV file name or path)</label>
             <input id="runData" placeholder="XAUUSD_M5.csv" />
+            <input id="runDataFile" type="file" accept=".csv" style="display:none;" />
+            <button id="runDataPick" class="ghost">Choose File</button>
           </div>
           <div>
             <label>Source</label>
@@ -270,8 +272,12 @@ INDEX_HTML = r"""<!doctype html>
         <h2>Compare Signals</h2>
         <label>Python Signals (CSV)</label>
         <input id="cmpPython" placeholder="signals.csv" />
+        <input id="cmpPythonFile" type="file" accept=".csv" style="display:none;" />
+        <button id="cmpPythonPick" class="ghost">Choose File</button>
         <label>MT5 Signals (CSV)</label>
         <input id="cmpMt5" placeholder="signals_mt5.csv" />
+        <input id="cmpMt5File" type="file" accept=".csv" style="display:none;" />
+        <button id="cmpMt5Pick" class="ghost">Choose File</button>
         <label>Output Diff Path</label>
         <input id="cmpOut" value="data/signal_diff.csv" />
         <div class="row">
@@ -473,6 +479,21 @@ INDEX_HTML = r"""<!doctype html>
       el("uploadStatus").textContent = data.ok ? ("Saved: " + data.saved) : ("Upload failed: " + fmt(data.error));
     }
 
+    async function uploadFileTo(file, targetInputId, statusId) {
+      if (!file) return;
+      if (statusId) el(statusId).textContent = "Uploading...";
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/upload-csv", { method: "POST", body: form });
+      const data = await res.json();
+      if (data.ok) {
+        el(targetInputId).value = data.saved || file.name;
+        if (statusId) el(statusId).textContent = "Uploaded: " + (data.saved || file.name);
+      } else if (statusId) {
+        el(statusId).textContent = "Upload failed: " + fmt(data.error);
+      }
+    }
+
     function downloadSet() {
       const profile = encodeURIComponent(el("exportProfile").value || "");
       window.location = `/api/export-set?profile=${profile}`;
@@ -500,6 +521,20 @@ INDEX_HTML = r"""<!doctype html>
     el("uploadBtn").addEventListener("click", uploadCsv);
     el("exportSet").addEventListener("click", downloadSet);
     el("downloadMt5").addEventListener("click", downloadMt5);
+
+    el("runDataPick").addEventListener("click", () => el("runDataFile").click());
+    el("cmpPythonPick").addEventListener("click", () => el("cmpPythonFile").click());
+    el("cmpMt5Pick").addEventListener("click", () => el("cmpMt5File").click());
+
+    el("runDataFile").addEventListener("change", (e) => {
+      uploadFileTo(e.target.files[0], "runData", "runStatus");
+    });
+    el("cmpPythonFile").addEventListener("change", (e) => {
+      uploadFileTo(e.target.files[0], "cmpPython", "compareStatus");
+    });
+    el("cmpMt5File").addEventListener("change", (e) => {
+      uploadFileTo(e.target.files[0], "cmpMt5", "compareStatus");
+    });
 
     syncPage();
     loadConfig().then(listCsv).catch(err => {
