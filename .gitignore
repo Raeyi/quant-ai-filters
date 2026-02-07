@@ -5,3 +5,5 @@ Python/data/*.json
 *.ex5
 Python/venv/
 __pycache__/
+quant_venv/
+Python/data/raw_dukascopy/
