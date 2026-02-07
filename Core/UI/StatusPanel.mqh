@@ -18,27 +18,8 @@ private:
    int    x;
    int    y;
    int    line;
-   int    panel_width;
-   int    panel_height;
-   string bg_name;
 
-   void CreateBackground()
-   {
-      if(ObjectFind(0, bg_name) >= 0)
-         return;
-
-      ObjectCreate(0, bg_name, OBJ_RECTANGLE_LABEL, 0, 0, 0);
-      ObjectSetInteger(0, bg_name, OBJPROP_CORNER, corner);
-      ObjectSetInteger(0, bg_name, OBJPROP_XDISTANCE, x - 5);
-      ObjectSetInteger(0, bg_name, OBJPROP_YDISTANCE, y - 5);
-      ObjectSetInteger(0, bg_name, OBJPROP_XSIZE, panel_width);
-      ObjectSetInteger(0, bg_name, OBJPROP_YSIZE, panel_height);
-      ObjectSetInteger(0, bg_name, OBJPROP_COLOR, clrDimGray);
-      ObjectSetInteger(0, bg_name, OBJPROP_BGCOLOR, clrBlack);
-      ObjectSetInteger(0, bg_name, OBJPROP_BACK, true);
-   }
-
-   void CreateLabel(const string name, int dy, color text_color, int font_size)
+   void CreateLabel(const string name, int dy)
    {
       string obj = prefix + name;
       if(ObjectFind(0, obj) >= 0)
@@ -48,19 +29,14 @@ private:
       ObjectSetInteger(0, obj, OBJPROP_CORNER, corner);
       ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, x);
       ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, y + dy);
-      ObjectSetInteger(0, obj, OBJPROP_FONTSIZE, font_size);
-      ObjectSetInteger(0, obj, OBJPROP_COLOR, text_color);
+      ObjectSetInteger(0, obj, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, obj, OBJPROP_COLOR, clrWhite);
       ObjectSetString(0, obj, OBJPROP_FONT, "Microsoft YaHei");
    }
 
    void SetText(const string name, const string text)
    {
       ObjectSetString(0, prefix + name, OBJPROP_TEXT, text);
-   }
-
-   void SetColor(const string name, color text_color)
-   {
-      ObjectSetInteger(0, prefix + name, OBJPROP_COLOR, text_color);
    }
 
    string TFToString(ENUM_TIMEFRAMES tf)
@@ -82,44 +58,39 @@ public:
    StatusPanel()
    {
       prefix = "STATUS_PANEL_";
-      bg_name = "STATUS_PANEL_BG";
       corner = CORNER_LEFT_UPPER;
       x      = 10;
       y      = 10;
       line   = 16;
-      panel_width = 270;
-      panel_height = 320;
    }
 
    void Init()
    {
       int i = 0;
-      CreateBackground();
-      CreateLabel("TITLE",        line * i++, clrAqua, 11); i++;
-      CreateLabel("TIME",         line * i++, clrWhite, 10);
-      CreateLabel("SYMBOL",       line * i++, clrWhite, 10);
-      CreateLabel("TIMEFRAME",    line * i++, clrWhite, 10); i++;
-      CreateLabel("BALANCE",      line * i++, clrWhite, 10);
-      CreateLabel("EQUITY",       line * i++, clrWhite, 10);
-      CreateLabel("TODAY_PNL",    line * i++, clrWhite, 10);
-      CreateLabel("FLOAT_PNL",    line * i++, clrWhite, 10); i++;
-      CreateLabel("POSITION",     line * i++, clrWhite, 10);
-      CreateLabel("VOLUME",       line * i++, clrWhite, 10); i++;
-      CreateLabel("RISK",         line * i++, clrWhite, 10);
-      CreateLabel("COOLDOWN",     line * i++, clrWhite, 10);
-      CreateLabel("ALLOW_ENTRY",  line * i++, clrWhite, 10);
+      CreateLabel("TITLE",      line * i++); i++;
+      CreateLabel("SYMBOL",     line * i++);
+      CreateLabel("TIMEFRAME",  line * i++);
+      CreateLabel("TIME",       line * i++); i++;
+      CreateLabel("BALANCE",    line * i++);
+      CreateLabel("EQUITY",     line * i++);
+      CreateLabel("TODAY_PNL",  line * i++); i++;
+      CreateLabel("RISK",       line * i++);
+      CreateLabel("COOLDOWN",   line * i++); i++;
+      CreateLabel("POSITION",   line * i++);
+      CreateLabel("VOLUME",     line * i++);
+      CreateLabel("FLOAT_PNL",  line * i++);
    }
 
    void Update(RiskPipeline& rp,
                PositionCoordinator& pc)
    {
       // ===== 标题 =====
-      SetText("TITLE", "=== 交易系统状态面板 ===");
+      SetText("TITLE", "━━━━━━━━ 交易系统状态 ━━━━━━━━");
 
       // ===== 基本信息 =====
-      SetText("TIME",      "时间：" + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS));
       SetText("SYMBOL",    "品种：" + _Symbol);
       SetText("TIMEFRAME", "周期：" + TFToString(_Period));
+      SetText("TIME",      "时间：" + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS));
 
       // ===== 账户 =====
       double balance = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -144,14 +115,8 @@ public:
 
       // ===== 风控状态 =====
       RiskStatus rs = rp.GetStatus();
-      string risk_text = rs.allow_entry ? "允许交易" : "禁止交易";
-      string cooldown_text = rs.in_cooldown ? "是" : "否";
-      SetText("RISK", "风险状态：" + risk_text);
-      SetText("COOLDOWN", "冷却状态：" + cooldown_text);
-      SetText("ALLOW_ENTRY", "允许开仓：" + risk_text);
-      SetColor("RISK", rs.allow_entry ? clrLime : clrTomato);
-      SetColor("ALLOW_ENTRY", rs.allow_entry ? clrLime : clrTomato);
-      SetColor("COOLDOWN", rs.in_cooldown ? clrOrange : clrLime);
+      SetText("RISK", "风险状态：" + string(rs.allow_entry ? "允许交易" : "禁止交易"));
+      SetText("COOLDOWN", "冷却状态：" + string(rs.in_cooldown ? "是" : "否"));
 
       // ===== 持仓状态 =====
       if(pc.HasPosition())
@@ -167,9 +132,6 @@ public:
          SetText("VOLUME",   "持仓手数：0");
          SetText("FLOAT_PNL","浮动盈亏：0");
       }
-
-      SetColor("FLOAT_PNL", pc.FloatingProfit() >= 0.0 ? clrLime : clrTomato);
-      SetColor("TODAY_PNL", today_pnl >= 0.0 ? clrLime : clrTomato);
    }
 };
 

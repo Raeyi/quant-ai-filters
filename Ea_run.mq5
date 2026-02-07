@@ -53,6 +53,8 @@ StatusPanel status_panel; // 状态面板
 
 // 指标导出文件句柄（如果需要导出 features）
 int g_file = INVALID_HANDLE;
+int g_signal_file = INVALID_HANDLE;
+int g_signal_pos = 0;
 
 //---------------- 新 bar 检测（沿用你旧 EA 的） ----------------
 bool IsNewBar()
@@ -106,6 +108,18 @@ int OnInit()
       // 不影响交易，可以不 return FAILED
    }
 
+   g_signal_file = FileOpen("signals_mt5.csv",
+                            FILE_WRITE | FILE_CSV | FILE_COMMON | FILE_SHARE_WRITE);
+   if(g_signal_file != INVALID_HANDLE)
+   {
+      FileWrite(g_signal_file, "time","signal","source");
+      Print("Signals file opened.");
+   }
+   else
+   {
+      Print("Signals file open failed: ", GetLastError());
+   }
+
    Print("EA Init finished");
    return INIT_SUCCEEDED;
 }
@@ -131,6 +145,21 @@ void OnTick()
 
    Signal signal; // 声明信号变量
    signal = manager.GetSignal(); // 获取策略信号
+
+   if(signal.type == SIGNAL_BUY)
+      g_signal_pos = 1;
+   else if(signal.type == SIGNAL_SELL)
+      g_signal_pos = -1;
+   else if(signal.type == SIGNAL_EXIT)
+      g_signal_pos = 0;
+
+   if(g_signal_file != INVALID_HANDLE)
+   {
+      FileWrite(g_signal_file,
+                TimeToString(iTime(_Symbol, _Period, 1), TIME_DATE|TIME_SECONDS),
+                g_signal_pos,
+                signal.source);
+   }
 
    if(pos_coord.HasPosition()) // 如果当前有仓位
    {
@@ -217,4 +246,6 @@ void OnDeinit(const int reason)
 {
    if(g_file != INVALID_HANDLE)
       FileClose(g_file);
+   if(g_signal_file != INVALID_HANDLE)
+      FileClose(g_signal_file);
 }

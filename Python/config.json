@@ -1,0 +1,69 @@
+﻿{
+  "active_profile": "backtest",
+  "profiles": {
+    "backtest": {
+      "broker": {
+        "name": "ECMarkets",
+        "spread_points": 0.0,
+        "commission_per_lot": 0.0,
+        "slippage_points": 0.0,
+        "lot_size": 100000,
+        "point": 0.0001
+      },
+      "paths": {
+        "data_root": "data",
+        "mt5_root": "E:/mt5测试数据/mt5",
+        "third_party_root": "",
+        "mt5_common_root": "C:/Users/ruiwe/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
+      },
+      "strategy": {
+        "boll_mr": {
+          "entry_mode": "A",
+          "allowed_start_hour": 20,
+          "allowed_end_hour": 14,
+          "boll_period": 18,
+          "boll_dev": 1.8,
+          "atr_period": 14,
+          "shortest_closing_time": 10,
+          "struct_atr_sl": 0.8,
+          "vol_atr_sl": 2.0,
+          "mid_atr_tp": 0.2,
+          "uplow_atr_tp": 0.1,
+          "ma_period": 50
+        }
+      }
+    },
+    "live": {
+      "broker": {
+        "name": "ECMarkets",
+        "spread_points": 0.0,
+        "commission_per_lot": 0.0,
+        "slippage_points": 0.0,
+        "lot_size": 100000,
+        "point": 0.0001
+      },
+      "paths": {
+        "data_root": "data",
+        "mt5_root": "C:/Users/ruiwe/AppData/Roaming/MetaQuotes/Terminal/836D60BB116D5AFA0D71F6C186288A1E/MQL5/Files",
+        "third_party_root": "",
+        "mt5_common_root": "C:/Users/ruiwe/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
+      },
+      "strategy": {
+        "boll_mr": {
+          "entry_mode": "A",
+          "allowed_start_hour": 20,
+          "allowed_end_hour": 14,
+          "boll_period": 18,
+          "boll_dev": 1.8,
+          "atr_period": 14,
+          "shortest_closing_time": 10,
+          "struct_atr_sl": 0.8,
+          "vol_atr_sl": 2.0,
+          "mid_atr_tp": 0.2,
+          "uplow_atr_tp": 0.1,
+          "ma_period": 50
+        }
+      }
+    }
+  }
+}
