@@ -38,13 +38,27 @@ def _read_mt5(path: str) -> pd.DataFrame:
 
 
 def _read_ohlc(path: str, tz: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, sep="\t")
     if "time" in df.columns:
         df["time"] = pd.to_datetime(df["time"], errors="coerce")
         df = df.set_index("time")
     else:
         # try common MT5 export columns
-        if "Date" in df.columns and "Time" in df.columns:
+        if "<DATE>" in df.columns and "<TIME>" in df.columns:
+            df["time"] = pd.to_datetime(df["<DATE>"] + " " + df["<TIME>"], errors="coerce")
+            df = df.set_index("time")
+            # normalize column names
+            ren = {
+                "<OPEN>": "open",
+                "<HIGH>": "high",
+                "<LOW>": "low",
+                "<CLOSE>": "close",
+                "<TICKVOL>": "tickvol",
+                "<VOL>": "vol",
+                "<SPREAD>": "spread",
+            }
+            df = df.rename(columns=ren)
+        elif "Date" in df.columns and "Time" in df.columns:
             df["time"] = pd.to_datetime(df["Date"] + " " + df["Time"], errors="coerce")
             df = df.set_index("time")
         else:
