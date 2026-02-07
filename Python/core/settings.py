@@ -121,7 +121,13 @@ def resolve_path(base: str, path: str) -> str:
         return str(p)
     if not base:
         return str(p)
-    return str((Path(base) / p).resolve())
+    base_path = Path(base)
+    try:
+        if p.parts and base_path.name and p.parts[0].lower() == base_path.name.lower():
+            return str(p.resolve())
+    except OSError:
+        pass
+    return str((base_path / p).resolve())
 
 
 def resolve_data_path(paths: DataPaths, source: str, path: str) -> str:
