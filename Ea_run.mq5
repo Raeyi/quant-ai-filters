@@ -231,7 +231,7 @@ void OnTick()
       double atr1   = GetATR(1);
 
       FileWrite(g_file,
-                TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
+                TimeToString(iTime(_Symbol, _Period, 1), TIME_DATE|TIME_SECONDS),
                 DoubleToString(close,_Digits),
                 DoubleToString(bu,_Digits),
                 DoubleToString(bl,_Digits),
