@@ -27,8 +27,6 @@ private:
     Cooldown     cooldown;       // 冷却
     PositionSizer position_sizer;  // 手数计算器
     LosingStreakGuard losing_guard; // 连续亏损保护
-    bool allow_entry;
-    bool in_cooldown;
 
 public:
     void Init()
@@ -79,13 +77,16 @@ public:
     }
 
     //  获取当前风险状态
-    RiskStatus GetStatus() const
-   {
-      RiskStatus rs;
-      rs.allow_entry = allow_entry;
-      rs.in_cooldown = in_cooldown;
-      return rs;
-   }
+    RiskStatus GetStatus()
+    {
+        RiskStatus rs;
+        bool cooldown_blocked = !cooldown.CanTrade() || !losing_guard.CanTrade();
+        rs.in_cooldown = cooldown_blocked;
+        rs.allow_entry = account_risk.AllowTrading()
+                         && position_risk.AllowNewTrade()
+                         && !cooldown_blocked;
+        return rs;
+    }
 
     // 是否需要平仓（时间止损 + PositionRisk 自身逻辑）
     bool ShouldClosePosition(const Signal &signal)
