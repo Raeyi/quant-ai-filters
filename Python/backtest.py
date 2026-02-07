@@ -149,6 +149,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--uplow-atr-tp", type=float, default=None)
     parser.add_argument("--ma-period", type=int, default=None)
     parser.add_argument("--progress-step", type=int, default=0, help="Print progress every N bars")
+    parser.add_argument("--diagnose-signals", action="store_true", help="Print signal diagnostics")
     return parser.parse_args()
 
 
@@ -199,7 +200,11 @@ def main() -> None:
     )
     strategy = BollMeanReversionStrategy(params, progress_step=args.progress_step)
     features = strategy.build_features(df)
-    signals = strategy.generate_signals(df)
+    signals = strategy.generate_signals(df, diagnose=args.diagnose_signals)
+    if args.diagnose_signals:
+        print("Signal diagnostics:")
+        for key, value in (strategy.last_diagnostics or {}).items():
+            print(f"  {key}: {value}")
 
     if args.filter == "zscore":
         filt = ZScoreThresholdFilter(threshold=args.zscore_threshold)

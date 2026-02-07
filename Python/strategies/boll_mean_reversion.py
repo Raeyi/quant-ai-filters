@@ -38,6 +38,7 @@ class BollMeanReversionStrategy:
     def __init__(self, params: BollMeanReversionParams, progress_step: int = 0):
         self.params = params
         self.progress_step = progress_step
+        self.last_diagnostics: dict[str, int | float] = {}
 
     def build_features(self, df: pd.DataFrame) -> pd.DataFrame:
         bands = bollinger_bands(df["close"], self.params.boll_period, self.params.boll_dev)
@@ -79,7 +80,13 @@ class BollMeanReversionStrategy:
             return "BEAR"
         return "FLAT"
 
-    def generate_signals(self, df: pd.DataFrame) -> pd.Series:
+    def generate_signals(self, df: pd.DataFrame, diagnose: bool = False) -> pd.Series:
+        diag: dict[str, int] = {}
+        def bump(key: str, inc: int = 1) -> None:
+            if not diagnose:
+                return
+            diag[key] = diag.get(key, 0) + inc
+
         bands = bollinger_bands(df["close"], self.params.boll_period, self.params.boll_dev)
         atr_series = atr(df, self.params.atr_period)
         ma_series = ema(df["close"], self.params.ma_period)
@@ -111,6 +118,7 @@ class BollMeanReversionStrategy:
         for idx, ts in enumerate(df.index):
             if self.progress_step and idx % self.progress_step == 0:
                 print(f"[progress] {idx}/{total}", flush=True)
+            bump("bars_total")
             values = (
                 close0.iloc[idx],
                 close1.iloc[idx],
@@ -129,21 +137,32 @@ class BollMeanReversionStrategy:
                 ma10.iloc[idx],
             )
             if any(pd.isna(v) for v in values):
+                bump("bars_skipped_nan")
                 signals.append(position)
                 continue
+            bump("bars_valid")
 
             c0, c1, h1, l1, bu0, bu1, bm0, bm1, bl0, bl1, a1, a_mean, m0, m1, m10 = values
 
             middle_up = bm0 >= bm1
             middle_down = bm0 <= bm1
+            if middle_up:
+                bump("middle_up")
+            if middle_down:
+                bump("middle_down")
 
             diff = m0 - m10
             slope_abs = abs(diff) / (10.0 * self.params.point) if self.params.point > 0 else 0.0
 
             long_trend_ok = diff >= 0 and slope_abs <= 100
             short_trend_ok = diff <= 0 and slope_abs <= 100
+            if long_trend_ok:
+                bump("long_trend_ok")
+            if short_trend_ok:
+                bump("short_trend_ok")
 
             trend_state = self._trend_state(m0, m1, middle_up, middle_down)
+            bump(f"trend_{trend_state.lower()}")
 
             def volatility_ok() -> bool:
                 if a_mean <= 0:
@@ -156,44 +175,84 @@ class BollMeanReversionStrategy:
                 return a1 > a_mean * 1.4
 
             def long_signal() -> bool:
-                if not self._time_filter_ok(ts):
+                time_ok = self._time_filter_ok(ts)
+                if time_ok:
+                    bump("time_ok")
+                else:
+                    bump("time_blocked")
+                if not time_ok:
                     return False
                 if self.params.entry_mode == "A":
-                    return (
+                    ok = (
                         long_trend_ok
                         and c1 < bl1
                         and c0 > bl0
                         and middle_up
                         and volatility_ok()
                     )
+                    if c1 < bl1:
+                        bump("long_c1_below_bl1")
+                    if c0 > bl0:
+                        bump("long_c0_above_bl0")
+                    if volatility_ok():
+                        bump("vol_ok")
+                    return ok
                 if self.params.entry_mode == "B":
                     wick_break = l1 < bl1
                     close_recover = c0 > bl0
+                    if wick_break:
+                        bump("long_wick_break")
+                    if close_recover:
+                        bump("long_close_recover")
+                    if volatility_ok():
+                        bump("vol_ok")
                     return long_trend_ok and wick_break and close_recover and middle_up and volatility_ok()
                 if self.params.entry_mode == "C":
                     if trend_state == "BEAR":
                         return False
+                    if volatility_ok():
+                        bump("vol_ok")
                     return c1 < bl1 and c0 > bl0 and volatility_ok()
                 return False
 
             def short_signal() -> bool:
-                if not self._time_filter_ok(ts):
+                time_ok = self._time_filter_ok(ts)
+                if time_ok:
+                    bump("time_ok")
+                else:
+                    bump("time_blocked")
+                if not time_ok:
                     return False
                 if self.params.entry_mode == "A":
-                    return (
+                    ok = (
                         short_trend_ok
                         and c1 > bu1
                         and c0 < bu0
                         and middle_down
                         and volatility_ok()
                     )
+                    if c1 > bu1:
+                        bump("short_c1_above_bu1")
+                    if c0 < bu0:
+                        bump("short_c0_below_bu0")
+                    if volatility_ok():
+                        bump("vol_ok")
+                    return ok
                 if self.params.entry_mode == "B":
                     wick_break = h1 > bu1
                     close_recover = c0 < bu0
+                    if wick_break:
+                        bump("short_wick_break")
+                    if close_recover:
+                        bump("short_close_recover")
+                    if volatility_ok():
+                        bump("vol_ok")
                     return short_trend_ok and wick_break and close_recover and middle_down and volatility_ok()
                 if self.params.entry_mode == "C":
                     if trend_state == "BULL":
                         return False
+                    if volatility_ok():
+                        bump("vol_ok")
                     return c1 > bu1 and c0 < bu0 and volatility_ok()
                 return False
 
@@ -237,12 +296,20 @@ class BollMeanReversionStrategy:
 
             if position == 0:
                 if long_signal():
+                    bump("long_entries")
                     position = 1
                     open_time = ts
                 elif short_signal():
+                    bump("short_entries")
                     position = -1
                     open_time = ts
 
             signals.append(position)
 
-        return pd.Series(signals, index=df.index, name="signal")
+        series = pd.Series(signals, index=df.index, name="signal")
+        if diagnose:
+            diag["signals_nonzero"] = int((series != 0).sum())
+            diag["signals_long"] = int((series == 1).sum())
+            diag["signals_short"] = int((series == -1).sum())
+            self.last_diagnostics = diag
+        return series
