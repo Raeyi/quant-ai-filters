@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import csv
 
 import pandas as pd
 
@@ -23,12 +24,24 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _detect_delimiter(path: str, encoding: str) -> str:
+    try:
+        with open(path, "r", encoding=encoding, errors="ignore") as f:
+            sample = f.read(4096)
+        if "\t" in sample and "," not in sample:
+            return "\t"
+        return csv.Sniffer().sniff(sample).delimiter
+    except Exception:  # noqa: BLE001
+        return ","
+
+
 def _read_csv_with_fallback(path: str) -> pd.DataFrame:
     encodings = ["utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "gbk"]
     last_err: Exception | None = None
     for enc in encodings:
         try:
-            return pd.read_csv(path, encoding=enc)
+            delim = _detect_delimiter(path, enc)
+            return pd.read_csv(path, encoding=enc, sep=delim)
         except Exception as exc:  # noqa: BLE001
             last_err = exc
             continue
