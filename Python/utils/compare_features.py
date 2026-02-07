@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT_DIR / "Python"))
 
 from indicators.atr import atr
 from indicators.bollinger import bollinger_bands
