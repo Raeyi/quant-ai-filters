@@ -242,6 +242,24 @@ def main() -> None:
             }
         )
         sig_df.to_csv(export_path, index=False)
+        if strategy.last_signal_state is not None:
+            state_path = export_path.with_name("signals_state.csv")
+            state_df = pd.DataFrame(
+                {
+                    "time": strategy.last_signal_state.index,
+                    "signal": strategy.last_signal_state.values,
+                }
+            )
+            state_df.to_csv(state_path, index=False)
+        if strategy.last_signal_events is not None:
+            event_path = export_path.with_name("signals_event.csv")
+            event_df = pd.DataFrame(
+                {
+                    "time": strategy.last_signal_events.index,
+                    "signal": strategy.last_signal_events.values,
+                }
+            )
+            event_df.to_csv(event_path, index=False)
 
     result = run_backtest(df, filtered.signals, config)
 

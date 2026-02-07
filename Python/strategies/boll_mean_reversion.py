@@ -40,6 +40,8 @@ class BollMeanReversionStrategy:
         self.params = params
         self.progress_step = progress_step
         self.last_diagnostics: dict[str, int | float] = {}
+        self.last_signal_events: pd.Series | None = None
+        self.last_signal_state: pd.Series | None = None
 
     def build_features(self, df: pd.DataFrame) -> pd.DataFrame:
         bands = bollinger_bands(df["close"], self.params.boll_period, self.params.boll_dev)
@@ -118,6 +120,8 @@ class BollMeanReversionStrategy:
         position = 0
         open_time: Optional[pd.Timestamp] = None
         signals = []
+        events = []
+        signal_state = 0
 
         total = len(df.index)
         for idx, ts in enumerate(df.index):
@@ -296,6 +300,8 @@ class BollMeanReversionStrategy:
             if position != 0 and exit_signal():
                 position = 0
                 open_time = None
+                signal_state = 0
+                events.append(0)
                 signals.append(position)
                 continue
 
@@ -304,17 +310,30 @@ class BollMeanReversionStrategy:
                     bump("long_entries")
                     position = 1
                     open_time = ts
+                    signal_state = 1
+                    events.append(1)
                 elif short_signal():
                     bump("short_entries")
                     position = -1
                     open_time = ts
+                    signal_state = -1
+                    events.append(-1)
+                else:
+                    events.append(None)
+            else:
+                events.append(None)
 
             signals.append(position)
 
         series = pd.Series(signals, index=df.index, name="signal")
+        event_series = pd.Series(events, index=df.index, name="signal_event")
+        state_series = event_series.ffill().fillna(0).astype(int)
+        state_series.name = "signal_state"
         if diagnose:
             diag["signals_nonzero"] = int((series != 0).sum())
             diag["signals_long"] = int((series == 1).sum())
             diag["signals_short"] = int((series == -1).sum())
             self.last_diagnostics = diag
+        self.last_signal_events = event_series
+        self.last_signal_state = state_series
         return series
