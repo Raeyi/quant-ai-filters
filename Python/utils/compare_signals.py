@@ -14,6 +14,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--out", default="", help="Optional diff CSV output path")
     parser.add_argument("--start-time", default="", help="Filter start time (YYYY-MM-DD HH:MM:SS)")
     parser.add_argument("--end-time", default="", help="Filter end time (YYYY-MM-DD HH:MM:SS)")
+    parser.add_argument(
+        "--mt5-offset-hours",
+        type=float,
+        default=0.0,
+        help="Shift MT5 timestamps by N hours to align timezones",
+    )
     parser.add_argument("--drop-first", type=int, default=0, help="Drop first N aligned rows")
     parser.add_argument("--drop-last", type=int, default=0, help="Drop last N aligned rows")
     parser.add_argument(
@@ -63,6 +69,8 @@ def main() -> None:
     args = _parse_args()
     py = _read_signals(args.python).rename(columns={"signal": "py_signal"})
     mt5 = _read_signals(args.mt5).rename(columns={"signal": "mt5_signal"})
+    if args.mt5_offset_hours:
+        mt5.index = mt5.index + pd.Timedelta(hours=args.mt5_offset_hours)
 
     merged = py.join(mt5, how="inner")
     if merged.empty:

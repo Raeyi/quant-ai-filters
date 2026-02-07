@@ -284,6 +284,8 @@ INDEX_HTML = r"""<!doctype html>
           <div><label>Start Time</label><input id="cmpStart" placeholder="2025-01-01 00:00:00" /></div>
           <div><label>End Time</label><input id="cmpEnd" placeholder="2025-02-01 00:00:00" /></div>
         </div>
+        <label>MT5 Time Offset (hours)</label>
+        <input id="cmpMt5Offset" placeholder="-2" />
         <div class="row">
           <div><label>Drop First</label><input id="cmpDropFirst" placeholder="50" /></div>
           <div><label>Drop Last</label><input id="cmpDropLast" placeholder="50" /></div>
@@ -454,6 +456,7 @@ INDEX_HTML = r"""<!doctype html>
         end_time: el("cmpEnd").value,
         drop_first: el("cmpDropFirst").value,
         drop_last: el("cmpDropLast").value,
+        mt5_offset_hours: el("cmpMt5Offset").value,
         event_only: el("cmpEventOnly").checked
       };
       const res = await fetch("/api/compare", {
