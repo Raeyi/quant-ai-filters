@@ -39,6 +39,7 @@ if (-not (Test-Path $Config)) {
 if (-not (Test-Path $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
+$outDirFull = (Resolve-Path $OutDir).Path
 
 $cfg = Get-Content -Path $Config -Raw | ConvertFrom-Json
 
@@ -148,11 +149,11 @@ if ($activeProfile -and ($cfg.active_profile -ne $activeProfile)) {
     Write-Host "Using profile '$activeProfile' (temporary config: $tempConfig)" -ForegroundColor Yellow
 }
 
-$featuresPath = Join-Path $OutDir "features.csv"
-$signalsPath = Join-Path $OutDir "signals.csv"
-$datasetPath = Join-Path $OutDir "dataset.csv"
-$diffPath = Join-Path $OutDir "signal_diff.csv"
-$equityPath = Join-Path $OutDir "equity.csv"
+$featuresPath = Join-Path $outDirFull "features.csv"
+$signalsPath = Join-Path $outDirFull "signals.csv"
+$datasetPath = Join-Path $outDirFull "dataset.csv"
+$diffPath = Join-Path $outDirFull "signal_diff.csv"
+$equityPath = Join-Path $outDirFull "equity.csv"
 
 $args = @(
     ".\\Python\\backtest.py",
