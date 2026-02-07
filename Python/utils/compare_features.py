@@ -26,7 +26,10 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _read_mt5(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
+    try:
+        df = pd.read_csv(path, encoding="utf-16")
+    except UnicodeError:
+        df = pd.read_csv(path, encoding="utf-8-sig")
     if "time" not in df.columns:
         raise ValueError("MT5 features must include 'time' column")
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
