@@ -99,12 +99,14 @@ class BollMeanReversionStrategy:
         high1 = df["high"].shift(1)
         low1 = df["low"].shift(1)
 
-        boll_u0 = bands["upper"]
-        boll_u1 = bands["upper"].shift(1)
-        boll_m0 = bands["mid"]
-        boll_m1 = bands["mid"].shift(1)
-        boll_l0 = bands["lower"]
-        boll_l1 = bands["lower"].shift(1)
+        # MT5 CopyBuffer for Bollinger starts at shift=1 (closed bar),
+        # so GetBoll*(0) maps to bands.shift(1) and GetBoll*(1) maps to shift(2).
+        boll_u0 = bands["upper"].shift(1)
+        boll_u1 = bands["upper"].shift(2)
+        boll_m0 = bands["mid"].shift(1)
+        boll_m1 = bands["mid"].shift(2)
+        boll_l0 = bands["lower"].shift(1)
+        boll_l1 = bands["lower"].shift(2)
 
         atr1 = atr_series.shift(1)
         atr_mean10 = atr_series.shift(1).rolling(10).mean()
