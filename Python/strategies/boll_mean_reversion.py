@@ -148,6 +148,7 @@ class BollMeanReversionStrategy:
             if any(pd.isna(v) for v in values):
                 bump("bars_skipped_nan")
                 signals.append(position)
+                events.append(None)
                 continue
             bump("bars_valid")
 
