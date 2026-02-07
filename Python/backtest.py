@@ -190,6 +190,7 @@ def main() -> None:
         bool_uplow_atr_tp=args.uplow_atr_tp if args.uplow_atr_tp is not None else cfg_boll.uplow_atr_tp,
         ma_period=args.ma_period if args.ma_period is not None else cfg_boll.ma_period,
         point=point,
+        time_offset_hours=cfg_boll.time_offset_hours,
         max_holding_bars=cfg_boll.max_holding_bars,
         max_daily_loss_percent=cfg_boll.max_daily_loss_percent,
         risk_percent=cfg_boll.risk_percent,

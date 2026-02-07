@@ -38,6 +38,7 @@ class BollMrSettings:
     mid_atr_tp: float = 0.2
     uplow_atr_tp: float = 0.1
     ma_period: int = 50
+    time_offset_hours: float = 0.0
     max_holding_bars: int = 0
     max_daily_loss_percent: float = 0.0
     risk_percent: float = 0.0
@@ -115,6 +116,7 @@ def load_settings(path: str | Path) -> AppSettings:
         mid_atr_tp=float(_get(boll_raw, "mid_atr_tp", 0.2)),
         uplow_atr_tp=float(_get(boll_raw, "uplow_atr_tp", 0.1)),
         ma_period=int(_get(boll_raw, "ma_period", 50)),
+        time_offset_hours=float(_get(boll_raw, "time_offset_hours", 0.0)),
         max_holding_bars=int(_get(boll_raw, "max_holding_bars", 0)),
         max_daily_loss_percent=float(_get(boll_raw, "max_daily_loss_percent", 0.0)),
         risk_percent=float(_get(boll_raw, "risk_percent", 0.0)),

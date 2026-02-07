@@ -25,6 +25,7 @@ class BollMeanReversionParams:
     ma_period: int = 50
     entry_mode: str = "A"
     point: float = 0.0001
+    time_offset_hours: float = 0.0
     max_holding_bars: int = 0
     max_daily_loss_percent: float = 0.0
     risk_percent: float = 0.0
@@ -66,6 +67,8 @@ class BollMeanReversionStrategy:
         return features
 
     def _time_filter_ok(self, ts: pd.Timestamp) -> bool:
+        if self.params.time_offset_hours:
+            ts = ts + pd.Timedelta(hours=self.params.time_offset_hours)
         hour = ts.hour
         start = self.params.allowed_start_hour
         end = self.params.allowed_end_hour
@@ -96,12 +99,12 @@ class BollMeanReversionStrategy:
         high1 = df["high"].shift(1)
         low1 = df["low"].shift(1)
 
-        boll_u0 = bands["upper"].shift(1)
-        boll_u1 = bands["upper"].shift(2)
-        boll_m0 = bands["mid"].shift(1)
-        boll_m1 = bands["mid"].shift(2)
-        boll_l0 = bands["lower"].shift(1)
-        boll_l1 = bands["lower"].shift(2)
+        boll_u0 = bands["upper"]
+        boll_u1 = bands["upper"].shift(1)
+        boll_m0 = bands["mid"]
+        boll_m1 = bands["mid"].shift(1)
+        boll_l0 = bands["lower"]
+        boll_l1 = bands["lower"].shift(1)
 
         atr1 = atr_series.shift(1)
         atr_mean10 = atr_series.shift(1).rolling(10).mean()
