@@ -23,8 +23,22 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _read_csv_with_fallback(path: str) -> pd.DataFrame:
+    encodings = ["utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "gbk"]
+    last_err: Exception | None = None
+    for enc in encodings:
+        try:
+            return pd.read_csv(path, encoding=enc)
+        except Exception as exc:  # noqa: BLE001
+            last_err = exc
+            continue
+    if last_err:
+        raise last_err
+    return pd.read_csv(path)
+
+
 def _read_signals(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
+    df = _read_csv_with_fallback(path)
     if "time" not in df.columns or "signal" not in df.columns:
         raise ValueError("signals file must include 'time' and 'signal' columns")
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
