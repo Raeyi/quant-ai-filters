@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MT5 信号 vs 回测信号对比</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <h1>MT5 信号与回测信号对比面板</h1>
+      <p>上传两份信号文件（JSON 或 CSV），即可在网页端对比。</p>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h2>数据导入</h2>
+        <div class="grid">
+          <label class="input-group">
+            <span>MT5 信号文件</span>
+            <input id="mt5File" type="file" accept=".json,.csv" />
+          </label>
+          <label class="input-group">
+            <span>回测信号文件</span>
+            <input id="btFile" type="file" accept=".json,.csv" />
+          </label>
+        </div>
+        <div class="options">
+          <div class="option-block">
+            <h3>匹配键</h3>
+            <label><input type="checkbox" value="time" checked /> 时间</label>
+            <label><input type="checkbox" value="symbol" checked /> 品种</label>
+            <label><input type="checkbox" value="type" checked /> 类型</label>
+            <label><input type="checkbox" value="source" /> 来源</label>
+          </div>
+          <div class="option-block">
+            <h3>对比字段</h3>
+            <label><input type="checkbox" value="price" checked /> 入场价</label>
+            <label><input type="checkbox" value="sl" checked /> 止损</label>
+            <label><input type="checkbox" value="tp" checked /> 止盈</label>
+            <label><input type="checkbox" value="timeframe" /> 周期</label>
+          </div>
+          <label class="input-group">
+            <span>价格容差</span>
+            <input id="tolerance" type="number" min="0" step="0.0001" value="0" />
+          </label>
+        </div>
+        <button id="compareBtn" class="primary">开始对比</button>
+        <p class="hint">
+          提示：JSON 建议为数组格式，例如 [{"time":"2024-01-01 10:00","symbol":"XAUUSD","type":"BUY","price":2000.5}]
+        </p>
+      </section>
+
+      <section class="card summary">
+        <h2>对比结果</h2>
+        <div class="summary-grid">
+          <div>
+            <h4>MT5 信号数</h4>
+            <p id="mt5Count">0</p>
+          </div>
+          <div>
+            <h4>回测信号数</h4>
+            <p id="btCount">0</p>
+          </div>
+          <div>
+            <h4>完全匹配</h4>
+            <p id="matchCount">0</p>
+          </div>
+          <div>
+            <h4>字段不一致</h4>
+            <p id="diffCount">0</p>
+          </div>
+          <div>
+            <h4>仅 MT5</h4>
+            <p id="onlyMt5Count">0</p>
+          </div>
+          <div>
+            <h4>仅 回测</h4>
+            <p id="onlyBtCount">0</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card table-card">
+        <h2>字段不一致</h2>
+        <div class="table-wrapper">
+          <table id="diffTable">
+            <thead>
+              <tr>
+                <th>匹配键</th>
+                <th>字段</th>
+                <th>MT5 值</th>
+                <th>回测值</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card table-card">
+        <h2>仅 MT5</h2>
+        <div class="table-wrapper">
+          <table id="onlyMt5Table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>品种</th>
+                <th>类型</th>
+                <th>价格</th>
+                <th>止损</th>
+                <th>止盈</th>
+                <th>来源</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card table-card">
+        <h2>仅 回测</h2>
+        <div class="table-wrapper">
+          <table id="onlyBtTable">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>品种</th>
+                <th>类型</th>
+                <th>价格</th>
+                <th>止损</th>
+                <th>止盈</th>
+                <th>来源</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
