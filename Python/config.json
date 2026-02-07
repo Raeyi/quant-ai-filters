@@ -29,7 +29,14 @@
           "vol_atr_sl": 2.0,
           "mid_atr_tp": 0.2,
           "uplow_atr_tp": 0.1,
-          "ma_period": 50
+          "ma_period": 48,
+          "max_holding_bars": 12,
+          "max_daily_loss_percent": 3.0,
+          "risk_percent": 0.5,
+          "max_losing_streak": 3,
+          "cooldown_bars_after": 5,
+          "cooldown_seconds": 60,
+          "min_confidence": 0.5
         }
       }
     },
@@ -61,7 +68,14 @@
           "vol_atr_sl": 2.0,
           "mid_atr_tp": 0.2,
           "uplow_atr_tp": 0.1,
-          "ma_period": 50
+          "ma_period": 48,
+          "max_holding_bars": 12,
+          "max_daily_loss_percent": 3.0,
+          "risk_percent": 0.5,
+          "max_losing_streak": 3,
+          "cooldown_bars_after": 5,
+          "cooldown_seconds": 60,
+          "min_confidence": 0.5
         }
       }
     }

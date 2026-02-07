@@ -38,6 +38,13 @@ class BollMrSettings:
     mid_atr_tp: float = 0.2
     uplow_atr_tp: float = 0.1
     ma_period: int = 50
+    max_holding_bars: int = 0
+    max_daily_loss_percent: float = 0.0
+    risk_percent: float = 0.0
+    max_losing_streak: int = 0
+    cooldown_bars_after: int = 0
+    cooldown_seconds: int = 0
+    min_confidence: float = 0.0
 
 
 @dataclass
@@ -108,6 +115,13 @@ def load_settings(path: str | Path) -> AppSettings:
         mid_atr_tp=float(_get(boll_raw, "mid_atr_tp", 0.2)),
         uplow_atr_tp=float(_get(boll_raw, "uplow_atr_tp", 0.1)),
         ma_period=int(_get(boll_raw, "ma_period", 50)),
+        max_holding_bars=int(_get(boll_raw, "max_holding_bars", 0)),
+        max_daily_loss_percent=float(_get(boll_raw, "max_daily_loss_percent", 0.0)),
+        risk_percent=float(_get(boll_raw, "risk_percent", 0.0)),
+        max_losing_streak=int(_get(boll_raw, "max_losing_streak", 0)),
+        cooldown_bars_after=int(_get(boll_raw, "cooldown_bars_after", 0)),
+        cooldown_seconds=int(_get(boll_raw, "cooldown_seconds", 0)),
+        min_confidence=float(_get(boll_raw, "min_confidence", 0.0)),
     )
     strategy = StrategySettings(boll_mr=boll)
     return AppSettings(broker=broker, paths=paths, strategy=strategy)

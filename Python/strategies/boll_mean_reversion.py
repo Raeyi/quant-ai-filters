@@ -25,6 +25,13 @@ class BollMeanReversionParams:
     ma_period: int = 50
     entry_mode: str = "A"
     point: float = 0.0001
+    max_holding_bars: int = 0
+    max_daily_loss_percent: float = 0.0
+    risk_percent: float = 0.0
+    max_losing_streak: int = 0
+    cooldown_bars_after: int = 0
+    cooldown_seconds: int = 0
+    min_confidence: float = 0.0
 
 
 class BollMeanReversionStrategy:

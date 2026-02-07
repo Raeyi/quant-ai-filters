@@ -14,6 +14,109 @@ from strategies.boll_mean_reversion import BollMeanReversionParams, BollMeanReve
 from utils.io import write_csv
 
 
+def _apply_risk_controls(
+    df: pd.DataFrame,
+    desired: pd.Series,
+    confidence: pd.Series,
+    config: BacktestConfig,
+    params: BollMeanReversionParams,
+) -> pd.Series:
+    price = df["close"]
+    position = 0
+    prev_position = 0
+    entry_price = None
+    bars_held = 0
+    cooldown_until = None
+    cooldown_bars = 0
+    losing_streak = 0
+    daily_block = False
+    daily_date = None
+    equity = config.initial_cash
+    daily_start_equity = equity
+
+    executed = []
+
+    for idx, ts in enumerate(df.index):
+        if daily_date is None or ts.date() != daily_date:
+            daily_date = ts.date()
+            daily_start_equity = equity
+            daily_block = False
+
+        if cooldown_bars > 0:
+            cooldown_bars -= 1
+        if cooldown_until is not None and ts >= cooldown_until:
+            cooldown_until = None
+
+        desired_pos = int(desired.iloc[idx])
+        if confidence is not None and params.min_confidence > 0:
+            if confidence.iloc[idx] < params.min_confidence:
+                desired_pos = 0
+
+        if position != 0:
+            bars_held += 1
+            if params.max_holding_bars > 0 and bars_held >= params.max_holding_bars:
+                desired_pos = 0
+
+        # handle reversals as exit then optional entry
+        wants_reverse = position != 0 and desired_pos != 0 and desired_pos != position
+
+        if position != 0 and (desired_pos == 0 or wants_reverse):
+            # exit
+            exit_price = float(price.iloc[idx])
+            trade_pnl = (exit_price - float(entry_price)) * position * config.lot_size
+            trade_cost = (config.spread_points * config.point + config.slippage_points * config.point) * config.lot_size
+            trade_cost += config.commission_per_lot
+            trade_pnl -= trade_cost
+
+            if trade_pnl < 0:
+                losing_streak += 1
+            elif trade_pnl > 0:
+                losing_streak = 0
+
+            if params.max_losing_streak > 0 and losing_streak >= params.max_losing_streak:
+                cooldown_bars = max(cooldown_bars, params.cooldown_bars_after)
+                losing_streak = 0
+
+            if params.cooldown_seconds > 0:
+                cooldown_until = ts + pd.Timedelta(seconds=params.cooldown_seconds)
+
+            position = 0
+            entry_price = None
+            bars_held = 0
+
+        if position == 0 and desired_pos != 0:
+            if daily_block or cooldown_bars > 0 or cooldown_until is not None:
+                desired_pos = 0
+            else:
+                position = 1 if desired_pos > 0 else -1
+                entry_price = float(price.iloc[idx])
+                bars_held = 0
+
+        executed.append(position)
+
+        # update equity using current position
+        if idx > 0:
+            price_change = float(price.iloc[idx] - price.iloc[idx - 1])
+            pnl = position * price_change * config.lot_size
+            trade_change = abs(position - prev_position)
+            if trade_change > 0:
+                pnl -= trade_change * (
+                    (config.spread_points * config.point + config.slippage_points * config.point) * config.lot_size
+                    + config.commission_per_lot
+                )
+            equity += pnl
+
+            if params.max_daily_loss_percent > 0:
+                if daily_start_equity > 0:
+                    daily_return = (equity - daily_start_equity) / daily_start_equity
+                    if daily_return <= -(params.max_daily_loss_percent / 100.0):
+                        daily_block = True
+
+        prev_position = position
+
+    return pd.Series(executed, index=df.index, name="signal")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="MT5 Forex backtest runner")
     parser.add_argument("--config", default="config.json", help="Path to config.json")
@@ -86,6 +189,13 @@ def main() -> None:
         bool_uplow_atr_tp=args.uplow_atr_tp if args.uplow_atr_tp is not None else cfg_boll.uplow_atr_tp,
         ma_period=args.ma_period if args.ma_period is not None else cfg_boll.ma_period,
         point=point,
+        max_holding_bars=cfg_boll.max_holding_bars,
+        max_daily_loss_percent=cfg_boll.max_daily_loss_percent,
+        risk_percent=cfg_boll.risk_percent,
+        max_losing_streak=cfg_boll.max_losing_streak,
+        cooldown_bars_after=cfg_boll.cooldown_bars_after,
+        cooldown_seconds=cfg_boll.cooldown_seconds,
+        min_confidence=cfg_boll.min_confidence,
     )
     strategy = BollMeanReversionStrategy(params, progress_step=args.progress_step)
     features = strategy.build_features(df)
@@ -96,6 +206,19 @@ def main() -> None:
     else:
         filt = IdentityFilter()
     filtered = filt.apply(features, signals)
+    config = BacktestConfig(
+        symbol=args.symbol,
+        timeframe=args.timeframe,
+        initial_cash=args.initial_cash,
+        spread_points=spread_points,
+        commission_per_lot=commission,
+        point=point,
+        lot_size=lot_size,
+    )
+
+    if params.min_confidence > 0:
+        filtered.signals = filtered.signals.where(filtered.confidence >= params.min_confidence, 0)
+    filtered.signals = _apply_risk_controls(df, filtered.signals, filtered.confidence, config, params)
 
     if args.export_features:
         export_path = Path(resolve_path(settings.paths.data_root, args.export_features))
@@ -114,15 +237,6 @@ def main() -> None:
         )
         sig_df.to_csv(export_path, index=False)
 
-    config = BacktestConfig(
-        symbol=args.symbol,
-        timeframe=args.timeframe,
-        initial_cash=args.initial_cash,
-        spread_points=spread_points,
-        commission_per_lot=commission,
-        point=point,
-        lot_size=lot_size,
-    )
     result = run_backtest(df, filtered.signals, config)
 
     if args.export_equity:
