@@ -8,3 +8,5 @@ Python/venv/
 __pycache__/
 quant_venv/
 Python/data/raw_dukascopy/
+data/
+data/**
