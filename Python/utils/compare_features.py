@@ -22,6 +22,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--boll-dev", type=float, default=2.0)
     parser.add_argument("--atr-period", type=int, default=14)
     parser.add_argument("--tz", default="", help="Optional timezone for parsing time")
+    parser.add_argument(
+        "--mt5-offset-hours",
+        type=float,
+        default=0.0,
+        help="Shift MT5 feature timestamps by N hours to align timezones",
+    )
     return parser.parse_args()
 
 
@@ -71,6 +77,8 @@ def _read_ohlc(path: str, tz: str) -> pd.DataFrame:
 def main() -> None:
     args = _parse_args()
     mt5 = _read_mt5(args.mt5)
+    if args.mt5_offset_hours:
+        mt5.index = mt5.index + pd.Timedelta(hours=args.mt5_offset_hours)
     ohlc = _read_ohlc(args.data, args.tz)
 
     bands = bollinger_bands(ohlc["close"], args.boll_period, args.boll_dev)
