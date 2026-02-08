@@ -19,7 +19,7 @@ int OnStart()
       Print("Failed to open CSV: ", CsvPath, " err=", GetLastError());
       return 1;
    }
-   FileSetInteger(in, FILE_SEPARATOR, '\t');
+   FileSetInteger(in, FILE_CSV_SEPARATOR, '\t');
 
    int out = FileOpen(OutputRelative, FILE_WRITE | FILE_CSV | FILE_COMMON);
    if(out == INVALID_HANDLE)
