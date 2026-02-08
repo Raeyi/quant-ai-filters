@@ -9,14 +9,19 @@ input string CsvPath = "XAUUSD_M5_202409050345_202602062350.csv"; // under Commo
 input string OutputRelative = "csv_diff.csv"; // under Common\\Files
 input double Tolerance = 0.000001;                 // price tolerance
 input int MaxRows = 0;                             // 0 = no limit
+input bool UseCommonFiles = true;                  // read CSV from Common\\Files
 
 int OnStart()
 {
    // Open CSV (tab-delimited MT5 export format)
-   int in = FileOpen(CsvPath, FILE_READ | FILE_TXT | FILE_ANSI | FILE_SHARE_READ);
+   int flags = FILE_READ | FILE_TXT | FILE_ANSI | FILE_SHARE_READ;
+   if(UseCommonFiles)
+      flags |= FILE_COMMON;
+   int in = FileOpen(CsvPath, flags);
    if(in == INVALID_HANDLE)
    {
-      Print("Failed to open CSV: ", CsvPath, " err=", GetLastError());
+      Print("Failed to open CSV: ", CsvPath, " err=", GetLastError(),
+            ". If UseCommonFiles=true, place the CSV under Common\\Files and pass only filename.");
       return 1;
    }
 
