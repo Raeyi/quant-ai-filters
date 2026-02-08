@@ -13,13 +13,12 @@ input int MaxRows = 0;                             // 0 = no limit
 int OnStart()
 {
    // Open CSV (tab-delimited MT5 export format)
-   int in = FileOpen(CsvPath, FILE_READ | FILE_CSV | FILE_ANSI | FILE_SHARE_READ);
+   int in = FileOpen(CsvPath, FILE_READ | FILE_TXT | FILE_ANSI | FILE_SHARE_READ);
    if(in == INVALID_HANDLE)
    {
       Print("Failed to open CSV: ", CsvPath, " err=", GetLastError());
       return 1;
    }
-   FileSetInteger(in, FILE_CSV_SEPARATOR, '\t');
 
    int out = FileOpen(OutputRelative, FILE_WRITE | FILE_CSV | FILE_COMMON);
    if(out == INVALID_HANDLE)
@@ -37,24 +36,7 @@ int OnStart()
 
    // Read header line (skip)
    if(!FileIsEnding(in))
-      FileReadString(in); // <DATE>
-   if(!FileIsEnding(in))
-      FileReadString(in); // <TIME>
-   if(!FileIsEnding(in))
-      FileReadString(in); // <OPEN>
-   if(!FileIsEnding(in))
-      FileReadString(in); // <HIGH>
-   if(!FileIsEnding(in))
-      FileReadString(in); // <LOW>
-   if(!FileIsEnding(in))
-      FileReadString(in); // <CLOSE>
-   // skip remaining header columns if any
-   while(!FileIsEnding(in))
-   {
-      string rest = FileReadString(in);
-      if(StringLen(rest) == 0)
-         break;
-   }
+      FileReadString(in);
 
    long total = 0;
    long matched = 0;
@@ -64,20 +46,18 @@ int OnStart()
 
    while(!FileIsEnding(in))
    {
-      string date = FileReadString(in);
-      if(StringLen(date) == 0) break;
-      string time = FileReadString(in);
-      string s_open = FileReadString(in);
-      string s_high = FileReadString(in);
-      string s_low  = FileReadString(in);
-      string s_close= FileReadString(in);
+      string line = FileReadString(in);
+      if(StringLen(line) == 0) break;
+      string parts[];
+      int cnt = StringSplit(line, '\t', parts);
+      if(cnt < 6) continue;
 
-      // consume remaining fields
-      for(int i=0;i<3;i++)
-      {
-         if(FileIsEnding(in)) break;
-         FileReadString(in);
-      }
+      string date = parts[0];
+      string time = parts[1];
+      string s_open = parts[2];
+      string s_high = parts[3];
+      string s_low  = parts[4];
+      string s_close= parts[5];
 
       datetime t = StringToTime(date + " " + time);
       if(t <= 0) continue;
