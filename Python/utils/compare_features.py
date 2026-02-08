@@ -114,6 +114,13 @@ def main() -> None:
     for col, stats in summary.items():
         print(f"  {col}: mean_abs={stats['mean_abs']:.6f} p95_abs={stats['p95_abs']:.6f} max_abs={stats['max_abs']:.6f}")
 
+    # Show a few sample rows for close mismatches
+    close_diff = (merged["close_diff"].abs()).sort_values(ascending=False)
+    print("Top close diffs:")
+    for t in close_diff.head(5).index:
+        row = merged.loc[t]
+        print(f"  {t} mt5={row['close_mt5']} py={row['close_py']} diff={row['close_diff']}")
+
     if args.out:
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
