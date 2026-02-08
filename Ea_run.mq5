@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿//+------------------------------------------------------------------+
 //|                     Ea_run.mq5                                   |
 //|   多策略 + 风控管道 + AI Filter + Bollinger/ATR 指标初始化与更新   |
 //+------------------------------------------------------------------+
@@ -161,15 +161,43 @@ void OnTick()
                 signal.source);
    }
 
-   if(pos_coord.HasPosition()) // 如果当前有仓位
+   if(pos_coord.HasPosition()) // 如果当前有仓位，先检查是否需要平仓
    {
       bool should_close = risk_pipeline.ShouldClosePosition(signal);
       if(should_close) //需要平仓
       {
-         if(executor.Close())
+         bool closed = false;
+
+         if(signal.type == SIGNAL_EXIT && signal.exit_volume > 0.0)
          {
-            risk_pipeline.OnPositionClosed();  // 通知 RiskPipeline 有一笔平仓
-            pos_coord.OnPositionClosed();      // 仓位协调器更新状态
+            double pos_vol = PositionGetDouble(POSITION_VOLUME);
+            double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+            double min_vol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+            double close_vol = MathMin(signal.exit_volume, pos_vol);
+
+            if(close_vol >= pos_vol - step * 0.5)
+               closed = executor.Close();
+            else if(close_vol >= min_vol)
+               closed = executor.ClosePartial(close_vol);
+            else
+               closed = executor.Close();
+         }
+         else
+         {
+            closed = executor.Close();
+         }
+
+         if(closed)
+         {
+            if(!PositionSelect(_Symbol))
+            {
+               risk_pipeline.OnPositionClosed();  // 只有当仓位确实关闭后才调用这个函数，防止误判
+               pos_coord.OnPositionClosed();      // 更新仓位协调器状态
+            }
+            else
+            {
+               pos_coord.SyncFromTerminal();
+            }
          }
          else
          {
@@ -249,3 +277,4 @@ void OnDeinit(const int reason)
    if(g_signal_file != INVALID_HANDLE)
       FileClose(g_signal_file);
 }
+

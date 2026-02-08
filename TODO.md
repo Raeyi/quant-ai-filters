@@ -2,6 +2,8 @@
 
 ## 已完成
 
+- [x] BollMR 分层出场与回落保护（支持部分平仓信号）
+- [x] EA 执行层支持部分平仓（`exit_volume` + `ClosePartial`）
 - [x] 定义 EA <-> Python 文件契约（features.csv / signals.csv 字段说明文档）
 - [x] 训练样本构建脚本（features + signals -> dataset）
 - [x] MT5 vs Python 信号对齐对比脚本

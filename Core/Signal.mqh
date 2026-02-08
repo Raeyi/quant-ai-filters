@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿//+------------------------------------------------------------------+
 //|                          Core/Signal.mqh                         |
 //|                   Signal structure definition                    |
 //+        信号结构体定义 = 交易信号的载体,策略执行后的“结果数据”         +
@@ -27,6 +27,8 @@ struct Signal
     double     sl;     // = 0 表示未指定
     double     tp;     // = 0 表示未指定
 
+    double     exit_volume; // > 0: partial close volume
+
     Signal()
     {
         type = SIGNAL_NONE;  // 最基本交易方向
@@ -36,7 +38,10 @@ struct Signal
         price = 0.0;         // 信号触发时的价格
         sl = 0.0;          // 默认不设定止损
         tp = 0.0;       // 默认不设定止盈
+
+        exit_volume = 0.0;
     }
 };
 
 #endif
+

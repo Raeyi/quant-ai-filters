@@ -1,4 +1,4 @@
-#ifndef __STRATEGY_BOLL_MR_MQH__
+﻿#ifndef __STRATEGY_BOLL_MR_MQH__
 #define __STRATEGY_BOLL_MR_MQH__
 
 #include "../Indicators/Bollinger.mqh"
@@ -17,12 +17,21 @@ input int ShortestClosingTime = 10; // 最短持仓时间，防止刚开仓立�
 input double    StructATRSL        = 0.8;   // 结构止损 ATR 倍数
 input double    VolATRSL          = 2.0;  // 波动止损 ATR
 input double    BoolMidATRTP         = 0.2;  // 均值回归止盈 ATR 倍数
+
+input double    BoolMidATRTP2        = 0.5;  // 均值回归止盈2 ATR 倍数
+input double    BoolPartialExit1     = 0.5;  // 第一层部分平仓比例
+input double    BoolPartialExit2     = 0.25; // 第二层部分平仓比例
 input double    BoolUplowATRTP         = 0.1;  //  上轨/下轨止盈 ATR 倍数
 input int    MAPeriod = 50;              // MA周期
 input string boll_entry_mode = "A"; // 入场模式：A / B / C
 
 class Strategy_BollMR : public IStrategy
 {
+private:
+    ulong  exit_ticket;
+    double exit_entry_volume;
+    int    exit_stage;
+
 public:
     bool Init()
     {
@@ -46,6 +55,10 @@ public:
         }
         
         Print("[" + Name() + "]  indicators initialized successfully");
+
+        exit_ticket = 0;
+        exit_entry_volume = 0.0;
+        exit_stage = 0;
 
         return true;
     }
@@ -87,7 +100,8 @@ public:
     {
         bool longSig  = LongSignal(boll_entry_mode);
         bool shortSig = ShortSignal(boll_entry_mode);
-        bool exitSig = HasExitSignal();
+        double exit_volume = 0.0;
+        bool exitSig = HasExitSignal(exit_volume);
 
         if(!PositionSelect(_Symbol)) // 无持仓
         {   
@@ -114,6 +128,7 @@ public:
             {   
                 Print("[BollMR] Exit signal triggered.");
                 signal.type = SIGNAL_EXIT;
+                signal.exit_volume = exit_volume;
                 FillSignal(signal, SIGNAL_EXIT);
 
                 Print("[BollMR] Exit signal filled. price=", signal.price,
@@ -464,11 +479,25 @@ public:
     }
 
 public:
-    bool HasExitSignal()
+    bool HasExitSignal(double &exit_volume)
     {
-        if(!PositionSelect(_Symbol)) // 无持仓
-            return false;
+        exit_volume = 0.0;
 
+        if(!PositionSelect(_Symbol)) // 无持仓
+        {
+            exit_ticket = 0;
+            exit_entry_volume = 0.0;
+            exit_stage = 0;
+            return false;
+        }
+
+        ulong ticket = (ulong)PositionGetInteger(POSITION_TICKET);
+        if(ticket != exit_ticket)
+        {
+            exit_ticket = ticket;
+            exit_entry_volume = PositionGetDouble(POSITION_VOLUME);
+            exit_stage = 0;
+        }
         // 防止刚开仓立刻被平掉
         datetime open_time =
             (datetime)PositionGetInteger(POSITION_TIME);
@@ -483,56 +512,84 @@ public:
         double middle_prev = GetBollMiddle(1);                    // 上一根 K 线的中轨
         double bid_now  = SymbolInfoDouble(_Symbol, SYMBOL_BID); // 最新价
         double bid_prev = iClose(_Symbol, _Period, 1);          // 前一根 K 线收盘价
+        double atr = GetATR(1);
+
         if(type == POSITION_TYPE_BUY)
         {  
-            // 从下往上穿越中轨
             if(!ReversionFailed())
             {
-                if(bid_prev < middle_prev && bid_now >= middle_now &&
-                        fabs(bid_now - middle_now) < GetATR(1) * BoolMidATRTP)
+                // 回落保护：若此前在中轨上方，当前又跌回中轨下方 -> 退出
+                if(bid_prev >= middle_prev && bid_now < middle_now)
                 {
-                    Print("Checking Buy exit: bid_prev=", DoubleToString(bid_prev, _Digits),
-                    ", bid_now=", DoubleToString(bid_now, _Digits),
-                    ", middle_prev=", DoubleToString(middle_prev, _Digits),
-                    ", middle_now=", DoubleToString(middle_now, _Digits));
                     return true;
                 }
-                else
+
+                double level1 = middle_now + atr * BoolMidATRTP;
+                double level2 = middle_now + atr * BoolMidATRTP2;
+
+                if(exit_stage == 0 && bid_now >= level1)
                 {
-                    if(bid_now >= GetBollUpper(1) - GetATR(1) * BoolUplowATRTP)
-                    {
-                        return true;
-                    }
+                    exit_volume = exit_entry_volume * BoolPartialExit1;
+                    exit_stage = 1;
+                    return true;
+                }
+
+                if(exit_stage == 1 && bid_now >= level2)
+                {
+                    exit_volume = exit_entry_volume * BoolPartialExit2;
+                    exit_stage = 2;
+                    return true;
+                }
+
+                if(bid_now >= GetBollUpper(1))
+                {
+                    exit_stage = 3;
+                    return true;
                 }
             }
-            
         }
 
         if(type == POSITION_TYPE_SELL)
         {
-            // 从上往下穿越中轨
             if(!ReversionFailed())
             {
-                if(bid_prev > middle_prev && bid_now <= middle_now &&
-                        fabs(bid_now - middle_now) < GetATR(1) * BoolMidATRTP)
+                // 回落保护：若此前在中轨下方，当前又涨回中轨上方 -> 退出
+                if(bid_prev <= middle_prev && bid_now > middle_now)
                 {
-                    Print("Checking Sell exit: bid_prev=", DoubleToString(bid_prev, _Digits),
-                    ", bid_now=", DoubleToString(bid_now, _Digits),
-                    ", middle_prev=", DoubleToString(middle_prev, _Digits),
-                    ", middle_now=", DoubleToString(middle_now, _Digits));
                     return true;
                 }
-                else
+
+                double level1 = middle_now - atr * BoolMidATRTP;
+                double level2 = middle_now - atr * BoolMidATRTP2;
+
+                if(exit_stage == 0 && bid_now <= level1)
                 {
-                    if(bid_now <= GetBollLower(1) + GetATR(1) * BoolUplowATRTP)
-                    {
-                        return true;
-                    }
+                    exit_volume = exit_entry_volume * BoolPartialExit1;
+                    exit_stage = 1;
+                    return true;
+                }
+
+                if(exit_stage == 1 && bid_now <= level2)
+                {
+                    exit_volume = exit_entry_volume * BoolPartialExit2;
+                    exit_stage = 2;
+                    return true;
+                }
+
+                if(bid_now <= GetBollLower(1))
+                {
+                    exit_stage = 3;
+                    return true;
                 }
             }
         }
         return false;
     }
-    };
+};
 
 #endif // __STRATEGY_BOLL_MR_MQH__
+
+
+
+
+
