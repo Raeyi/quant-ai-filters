@@ -5,8 +5,8 @@
 #property strict
 #property script_show_inputs
 
-input string CsvPath = "E:\\mt5测试数据\\mt5\\XAUUSD_M5_202409050345_202602062350.csv";
-input string OutputRelative = "data\\csv_diff.csv"; // under Common\\Files
+input string CsvPath = "XAUUSD_M5_202409050345_202602062350.csv"; // under Common\\Files
+input string OutputRelative = "csv_diff.csv"; // under Common\\Files
 input double Tolerance = 0.000001;                 // price tolerance
 input int MaxRows = 0;                             // 0 = no limit
 
