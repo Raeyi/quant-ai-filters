@@ -70,11 +70,16 @@ input bool AlertOnOrderOpen  = true;   // 开仓提示
 input bool AlertOnOrderClose = true;   // 平仓提示
 input bool AlertOnOrderFail  = true;   // 下单/平仓失败提示
 
+//---------------- 缺口冷却 ----------------
+input int  GapCooldownBars = 5;        // 发现停盘缺口后跳过的bar数量
+
 //---------------- 运行时状态 ----------------
 bool g_period_valid = true;
 bool g_period_warned = false;
 datetime g_suppress_chart_event_until = 0;
 string g_template_key = "";
+datetime g_last_bar_time = 0;
+int g_gap_skip_bars_remaining = 0;
 
 // 指标导出文件句柄（如果需要导出 features）
 int g_file = INVALID_HANDLE;
@@ -212,6 +217,27 @@ void OnTick()
    // 只在新 bar 上做决策
    if(!IsNewBar())
       return;
+
+   // 缺口检测 + 冷却
+   datetime bar_time = iTime(_Symbol, _Period, 0);
+   if(g_last_bar_time > 0)
+   {
+      int period_sec = PeriodSeconds(_Period);
+      if(period_sec > 0 && (bar_time - g_last_bar_time) > (int)(period_sec * 1.5))
+      {
+         g_gap_skip_bars_remaining = GapCooldownBars;
+         Print("[EA] Gap detected. Skip next ", g_gap_skip_bars_remaining, " bars.");
+      }
+   }
+   g_last_bar_time = bar_time;
+
+   if(g_gap_skip_bars_remaining > 0)
+   {
+      g_gap_skip_bars_remaining--;
+      Print("[EA] Gap cooldown active. Remaining bars: ", g_gap_skip_bars_remaining);
+      UpdateStatusPanel();
+      return;
+   }
 
    // 指标数据更新
    if(!boll.UpdateIndicators())

@@ -162,6 +162,7 @@ public:
                 return false;
             return (CloseAt(2) < GetBollLower(2) &&
                     CloseAt(1) > GetBollLower(1) && 
+                    CloseAt(1) <= GetBollMiddle(1) &&
                     MiddleUpClosed() && 
                     VolatilityOK());
         }
@@ -176,6 +177,7 @@ public:
             return (
                     wick_break &&
                     close_recover &&
+                    CloseAt(1) <= GetBollMiddle(1) &&
                     MiddleUpClosed() &&
                     VolatilityOK());
         }
@@ -190,6 +192,7 @@ public:
             return (
                 CloseAt(2) < GetBollLower(2) &&
                 CloseAt(1) > GetBollLower(1) &&
+                CloseAt(1) <= GetBollMiddle(1) &&
                 VolatilityOK());
         }
         else
@@ -227,6 +230,7 @@ public:
                 return false;
             return (CloseAt(2) > GetBollUpper(2) && // 前2根K线收盘在上轨外
                     CloseAt(1) < GetBollUpper(1) && // 前1根K线收盘回到轨内
+                    CloseAt(1) >= GetBollMiddle(1) &&
                     MiddleDownClosed() && 
                     VolatilityOK());
         }
@@ -239,6 +243,7 @@ public:
             return (
                     wick_break &&
                     close_recover &&
+                    CloseAt(1) >= GetBollMiddle(1) &&
                     MiddleDownClosed() &&
                     VolatilityOK());
         }
@@ -253,6 +258,7 @@ public:
             return (
                 CloseAt(2) > GetBollUpper(2) && // 前2根K线收盘在上轨外
                 CloseAt(1) < GetBollUpper(1) && // 前1根K线收盘回到轨内
+                CloseAt(1) >= GetBollMiddle(1) &&
                 VolatilityOK()); // 波动率过滤
         }
         else
