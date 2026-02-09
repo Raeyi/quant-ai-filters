@@ -51,6 +51,36 @@ ConfidenceFilter    conf_filter; // 置信度过滤器
 
 StatusPanel status_panel; // 状态面板
 
+//---------------- 面板/模板设置 ----------------
+input bool   ApplyTemplateOnInit = true;      // 附加EA时加载模板
+input bool   ApplyTemplateOnce = true;        // 仅首次加载模板
+input bool   ClearTemplateOnceOnRemove = true; // EA移除时清理“仅一次”标记
+input string TemplateName = "zz_bb_rsi.tpl";  // 模板文件名（Profiles/Templates）
+
+//---------------- 周期设置 ----------------
+input bool            ForceTimeframeOnInit = true;     // 附加EA时自动切换周期
+input ENUM_TIMEFRAMES TargetTimeframe = PERIOD_M5;     // 目标周期
+input bool            AlertOnTimeframeChange = true;   // 周期变化提示
+input bool            DisableOnTimeframeChange = true; // 周期变化后禁用EA
+input bool            ReloadOnTimeframeChange = false; // 周期变化后移除EA
+input bool            AutoRevertTimeframe = false;     // 周期变化后自动切回目标周期
+
+//---------------- 交易提示 ----------------
+input bool AlertOnOrderOpen  = true;   // 开仓提示
+input bool AlertOnOrderClose = true;   // 平仓提示
+input bool AlertOnOrderFail  = true;   // 下单/平仓失败提示
+
+//---------------- 缺口冷却 ----------------
+input int  GapCooldownBars = 5;        // 发现停盘缺口后跳过的bar数量
+
+//---------------- 运行时状态 ----------------
+bool g_period_valid = true;
+bool g_period_warned = false;
+datetime g_suppress_chart_event_until = 0;
+string g_template_key = "";
+datetime g_last_bar_time = 0;
+int g_gap_skip_bars_remaining = 0;
+
 // 指标导出文件句柄（如果需要导出 features）
 int g_file = INVALID_HANDLE;
 int g_signal_file = INVALID_HANDLE;
@@ -69,12 +99,60 @@ bool IsNewBar()
    return false;
 }
 
+void UpdateStatusPanel()
+{
+   bool ea_disabled = (!g_period_valid && DisableOnTimeframeChange);
+   string reason = "";
+   if(ea_disabled)
+      reason = "TF " + EnumToString((ENUM_TIMEFRAMES)_Period) + " != " + EnumToString(TargetTimeframe);
+   status_panel.Update(risk_pipeline, pos_coord, ea_disabled, reason);
+}
+
 //---------------- 初始化 ----------------
 int OnInit()
 {
    Print("EA Init start");
 
+   // 目标周期强制切换
+   if(ForceTimeframeOnInit && _Period != TargetTimeframe)
+   {
+      g_suppress_chart_event_until = TimeCurrent() + 2;
+      bool changed = ChartSetSymbolPeriod(0, _Symbol, TargetTimeframe);
+      Print("Switching timeframe to ", EnumToString(TargetTimeframe),
+            " result=", (changed ? "true" : "false"));
+      if(changed)
+         return INIT_SUCCEEDED;
+   }
+
+   if(ApplyTemplateOnInit)
+   {
+      bool should_apply = true;
+      if(ApplyTemplateOnce)
+      {
+         g_template_key = "EA_TEMPLATE_APPLIED_" + IntegerToString((int)ChartID()) + "_" + TemplateName;
+         if(GlobalVariableCheck(g_template_key))
+            should_apply = false;
+      }
+
+      if(should_apply)
+      {
+         if(!ChartApplyTemplate(0, TemplateName))
+            Print("Failed to apply template: ", TemplateName, " err=", GetLastError());
+         else
+         {
+            Print("Template applied: ", TemplateName);
+            if(ApplyTemplateOnce && g_template_key != "")
+               GlobalVariableSet(g_template_key, TimeCurrent());
+         }
+      }
+      else
+      {
+         Print("Template skipped (ApplyTemplateOnce): ", TemplateName);
+      }
+   }
+
    status_panel.Init(); // 初始化状态面板
+   EventSetTimer(1); // 每秒刷新面板时间显示
 
    // 1. 策略管理器：挂上 Bollinger 策略
    manager.Add(&boll);
@@ -93,6 +171,9 @@ int OnInit()
 
    // 5. 仓位协调器与真实终端同步（防止 EA 重启时状态不一致）
    pos_coord.SyncFromTerminal();
+
+   // 面板首次显示
+   UpdateStatusPanel();
 
    // 6. 如果需要导出特征，就打开文件
    g_file = FileOpen("features.csv",
@@ -127,9 +208,36 @@ int OnInit()
 //---------------- Tick 驱动 ----------------
 void OnTick()
 {
+   if(!g_period_valid && DisableOnTimeframeChange)
+   {
+      UpdateStatusPanel();
+      return;
+   }
+
    // 只在新 bar 上做决策
    if(!IsNewBar())
       return;
+
+   // 缺口检测 + 冷却
+   datetime bar_time = iTime(_Symbol, _Period, 0);
+   if(g_last_bar_time > 0)
+   {
+      int period_sec = PeriodSeconds(_Period);
+      if(period_sec > 0 && (bar_time - g_last_bar_time) > (int)(period_sec * 1.5))
+      {
+         g_gap_skip_bars_remaining = GapCooldownBars;
+         Print("[EA] Gap detected. Skip next ", g_gap_skip_bars_remaining, " bars.");
+      }
+   }
+   g_last_bar_time = bar_time;
+
+   if(g_gap_skip_bars_remaining > 0)
+   {
+      g_gap_skip_bars_remaining--;
+      Print("[EA] Gap cooldown active. Remaining bars: ", g_gap_skip_bars_remaining);
+      UpdateStatusPanel();
+      return;
+   }
 
    // 指标数据更新
    if(!boll.UpdateIndicators())
@@ -193,6 +301,8 @@ void OnTick()
             {
                risk_pipeline.OnPositionClosed();  // 只有当仓位确实关闭后才调用这个函数，防止误判
                pos_coord.OnPositionClosed();      // 更新仓位协调器状态
+               if(AlertOnOrderClose)
+                  Alert("平仓完成: ", _Symbol);
             }
             else
             {
@@ -202,6 +312,8 @@ void OnTick()
          else
          {
             Print("[EA] ", signal.source, " Failed to close position when requested.");
+            if(AlertOnOrderFail)
+               Alert("平仓失败: ", _Symbol);
          }
       }
    }
@@ -238,13 +350,28 @@ void OnTick()
                if(executor.Execute(req, signal.source))
                {
                   Print("[EA] Order executed.");
+                  if(AlertOnOrderOpen)
+                     Alert("开仓成功: ", _Symbol, " ", (req.direction==TRADE_BUY?"BUY":"SELL"),
+                           " vol=", DoubleToString(req.volume,2));
                   risk_pipeline.OnTradeExecuted();
                   pos_coord.OnPositionOpened(signal);
+               }
+               else
+               {
+                  if(AlertOnOrderFail)
+                     Alert("开仓失败: ", _Symbol, " ", (req.direction==TRADE_BUY?"BUY":"SELL"));
                }
             }
             else
             {
-               Print("[EA] RiskPipeline.BuildTrade returned false");
+              string sig_dir = (signal.type==SIGNAL_BUY ? "BUY" :
+                               (signal.type==SIGNAL_SELL ? "SELL" : "OTHER"));
+              Print("[EA] BuildTrade failed. source=", signal.source,
+                    " dir=", sig_dir,
+                    " price=", DoubleToString(signal.price,_Digits),
+                    " sl=", DoubleToString(signal.sl,_Digits),
+                    " tp=", DoubleToString(signal.tp,_Digits),
+                    " reason=", risk_pipeline.GetBlockReason());
             }
          }
       }
@@ -266,15 +393,81 @@ void OnTick()
                 DoubleToString(atr1,_Digits));
    }
 
-   status_panel.Update(risk_pipeline, pos_coord); // 更新状态面板
+   UpdateStatusPanel(); // 更新状态面板
+}
+
+//---------------- 定时器 ----------------
+void OnTimer()
+{
+   if(!g_period_valid && DisableOnTimeframeChange)
+   {
+      UpdateStatusPanel();
+      return;
+   }
+   UpdateStatusPanel();
+}
+
+//---------------- 图表事件 ----------------
+void OnChartEvent(const int id,
+                  const long &lparam,
+                  const double &dparam,
+                  const string &sparam)
+{
+   if(id != CHARTEVENT_CHART_CHANGE)
+      return;
+
+   if(g_suppress_chart_event_until > 0 && TimeCurrent() <= g_suppress_chart_event_until)
+      return;
+
+   if(_Period != TargetTimeframe)
+   {
+      g_period_valid = false;
+      if(AlertOnTimeframeChange && !g_period_warned)
+      {
+         g_period_warned = true;
+         string msg = "周期改变为 " + EnumToString((ENUM_TIMEFRAMES)_Period) +
+                      "，期望 " + EnumToString(TargetTimeframe) + "。";
+         if(ReloadOnTimeframeChange)
+            msg += " 将移除EA。";
+         else if(DisableOnTimeframeChange)
+            msg += " EA已禁用。";
+         Alert(msg);
+         Print(msg);
+      }
+
+      if(ReloadOnTimeframeChange)
+      {
+         ExpertRemove();
+         return;
+      }
+
+      if(AutoRevertTimeframe)
+      {
+         g_suppress_chart_event_until = TimeCurrent() + 2;
+         bool changed = ChartSetSymbolPeriod(0, _Symbol, TargetTimeframe);
+         Print("Auto revert timeframe to ", EnumToString(TargetTimeframe),
+               " result=", (changed ? "true" : "false"));
+      }
+   }
+   else
+   {
+      g_period_valid = true;
+      g_period_warned = false;
+   }
 }
 
 //---------------- 反初始化 ----------------
 void OnDeinit(const int reason)
 {
+   EventKillTimer();
+   if(ApplyTemplateOnce && ClearTemplateOnceOnRemove && g_template_key != "")
+   {
+      if(reason == REASON_REMOVE || reason == REASON_RECOMPILE || reason == REASON_CHARTCLOSE)
+         GlobalVariableDel(g_template_key);
+   }
+
    if(g_file != INVALID_HANDLE)
       FileClose(g_file);
    if(g_signal_file != INVALID_HANDLE)
       FileClose(g_signal_file);
 }
-

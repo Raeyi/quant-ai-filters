@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 //|                          Risk/PositionRisk.mqh                   |
 //|                   Position Risk definition                       |
-//+                 仓位风险定义 = 时间 / 规则 / 主动退出               +
+//|                 仓位风险定义 = 时间 / 规则 / 主动退出              |
 //+------------------------------------------------------------------+
 
 #ifndef __RISK_POSITION_RISK_MQH__
@@ -35,9 +35,15 @@ public:
     bool AllowNewTrade() // 检查是否允许新交易
     {
         // 单仓模式
+        static datetime last_log_bar = 0;
+        datetime bar_time = iTime(_Symbol, _Period, 0);
         if(HasPosition())
         {
-            Print("[PositionRisk] Position exists, no new trade");
+            if(bar_time != last_log_bar)
+            {
+                last_log_bar = bar_time;
+                Print("[PositionRisk] 已有持仓，禁止新开仓");
+            }
             return false;
         }
         return true;
@@ -57,14 +63,14 @@ public:
         if(!HasPosition())
             return false;
 
-        // --- 1️⃣ TimeStop ---
+        // --- 1: TimeStop ---
         if(IsTimeExceeded()) // 超过最大持仓时间
         {
-            Print("[PositionRisk] TimeStop triggered");
+            Print("[PositionRisk] TimeStop 触发");
             return true;
         }
 
-        // --- 2️⃣ 未来可扩展 ---
+        // --- 2: 未来可扩展 ---
         // if(IsSignalInvalid())
         // if(IsAIRiskReject())
         // if(IsDrawdownTooLarge())

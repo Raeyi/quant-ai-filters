@@ -10,9 +10,9 @@
 // Handle & buffers
 //--------------------------------------------------
 int    bollHandle = INVALID_HANDLE; // 指标句柄 
-double bollUpper[];                 // 上轨缓冲区
-double bollMiddle[];                // 中轨缓冲区
-double bollLower[];                // 下轨缓冲区
+double bollUpper[];                 // 上轨缓冲�?
+double bollMiddle[];                // 中轨缓冲�?
+double bollLower[];                // 下轨缓冲�?
 
 //--------------------------------------------------
 // Init
@@ -53,10 +53,10 @@ bool UpdateBollinger(int bars = 20)
     ArrayResize(bollMiddle, bars);
     ArrayResize(bollLower,  bars);
 
-    // IMPORTANT: start_pos = 1 → 已收盘 K 线
-    int c1 = CopyBuffer(bollHandle, 0, 1, bars, bollUpper);
-    int c2 = CopyBuffer(bollHandle, 1, 1, bars, bollMiddle);
-    int c3 = CopyBuffer(bollHandle, 2, 1, bars, bollLower);
+    // IMPORTANT: // IMPORTANT: start_pos = 0 (aligns with shift indices)
+    int c1 = CopyBuffer(bollHandle, 0, 0, bars, bollUpper);
+    int c2 = CopyBuffer(bollHandle, 1, 0, bars, bollMiddle);
+    int c3 = CopyBuffer(bollHandle, 2, 0, bars, bollLower);
 
     if(c1 <= 0 || c2 <= 0 || c3 <= 0)
     {

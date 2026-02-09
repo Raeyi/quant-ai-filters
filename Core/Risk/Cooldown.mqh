@@ -1,16 +1,14 @@
 //+------------------------------------------------------------------+
 //|                          Risk/Cooldown.mqh                       |
 //|                   Cooldown definition                            |
-//+                 冷却时间定义 = 持仓时间限制（防过度交易）            +
 //+------------------------------------------------------------------+
-
 #ifndef __RISK_COOLDOWN_MQH__
 #define __RISK_COOLDOWN_MQH__
 
 class Cooldown
 {
 private:
-    datetime last_trade_time; // 上次交易时间
+    datetime last_trade_time;
     int      cooldown_seconds;
 
 public:
@@ -25,7 +23,7 @@ public:
         cooldown_seconds = seconds;
     }
 
-    bool CanTrade()
+    bool CanTrade() const
     {
         if(cooldown_seconds <= 0)
             return true;
@@ -36,11 +34,24 @@ public:
         return (TimeCurrent() - last_trade_time) >= cooldown_seconds;
     }
 
+    int RemainingSeconds() const
+    {
+        if(cooldown_seconds <= 0 || last_trade_time == 0)
+            return 0;
+
+        int remaining = (int)(cooldown_seconds - (TimeCurrent() - last_trade_time));
+        return (remaining > 0) ? remaining : 0;
+    }
+
+    bool InCooldown() const
+    {
+        return RemainingSeconds() > 0;
+    }
+
     void OnTrade()
     {
         last_trade_time = TimeCurrent();
     }
 };
-
 
 #endif// __RISK_COOLDOWN_MQH__
