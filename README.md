@@ -19,7 +19,7 @@
 - `/Python`：Python 研究与回测模块
 - `/Python/data`：数据获取与清洗
 - `/Python/indicators`：Python 指标实现
-- `/Python/strategies`：Python 策略实现（与 MQL5 1:1 对齐）
+- `/Python/strategies`：Python 策略实现（与 MQL5 对齐中）
 - `/Python/ai_filters`：AI 过滤器管线
 - `/Python/core`：回测引擎与配置
 - `/Python/backtest.py`：主回测脚本
@@ -66,7 +66,7 @@ python backtest.py --help
 
 备注：
 - 如果使用 Tick 数据，必须传 `--resample`（如 `1T`、`5T`、`15T`）。
-- 策略逻辑与 MQL5 的 BollMR 1:1 对齐（入场/出场/时间过滤/ATR 与 MA 检查）。
+- 策略逻辑正在与 MQL5 的 BollMR 对齐（近期 MQL5 侧已更新：入场用已收盘K线、回归中轨过滤、缺口冷却、Bollinger 缓冲对齐）。
 
 ## 回测行情输入文件是什么？怎么获取？
 

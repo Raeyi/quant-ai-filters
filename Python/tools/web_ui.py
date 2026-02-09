@@ -609,6 +609,7 @@ def _config_to_set(profile: Dict[str, Any]) -> str:
         ("StructATRSL", strat.get("struct_atr_sl", 0.8)),
         ("VolATRSL", strat.get("vol_atr_sl", 2.0)),
         ("BoolMidATRTP", strat.get("mid_atr_tp", 0.2)),
+        ("BoolMidATRTP2", strat.get("mid_atr_tp2", 0.5)),
         ("BoolUplowATRTP", strat.get("uplow_atr_tp", 0.1)),
         ("MAPeriod", strat.get("ma_period", 50)),
         ("boll_entry_mode", strat.get("entry_mode", "A")),
@@ -644,6 +645,7 @@ def _apply_set_to_profile(profile: Dict[str, Any], params: Dict[str, str]) -> No
         "StructATRSL": ("struct_atr_sl", float),
         "VolATRSL": ("vol_atr_sl", float),
         "BoolMidATRTP": ("mid_atr_tp", float),
+        "BoolMidATRTP2": ("mid_atr_tp2", float),
         "BoolUplowATRTP": ("uplow_atr_tp", float),
         "MAPeriod": ("ma_period", int),
         "boll_entry_mode": ("entry_mode", str),
@@ -880,8 +882,11 @@ class Handler(BaseHTTPRequestHandler):
                 "struct_atr_sl": "-StructAtrSl",
                 "vol_atr_sl": "-VolAtrSl",
                 "mid_atr_tp": "-MidAtrTp",
+                "mid_atr_tp2": "-MidAtrTp2",
                 "uplow_atr_tp": "-UplowAtrTp",
                 "ma_period": "-MaPeriod",
+                "gap_cooldown_bars": "-GapCooldownBars",
+                "gap_threshold_multiplier": "-GapThresholdMultiplier",
                 "progress_step": "-ProgressStep",
             }
             for key, flag in optional_map.items():

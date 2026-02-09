@@ -36,6 +36,7 @@ class BollMrSettings:
     struct_atr_sl: float = 0.8
     vol_atr_sl: float = 2.0
     mid_atr_tp: float = 0.2
+    mid_atr_tp2: float = 0.5
     uplow_atr_tp: float = 0.1
     ma_period: int = 50
     time_offset_hours: float = 0.0
@@ -46,6 +47,8 @@ class BollMrSettings:
     cooldown_bars_after: int = 0
     cooldown_seconds: int = 0
     min_confidence: float = 0.0
+    gap_cooldown_bars: int = 5
+    gap_threshold_multiplier: float = 1.5
 
 
 @dataclass
@@ -114,6 +117,7 @@ def load_settings(path: str | Path) -> AppSettings:
         struct_atr_sl=float(_get(boll_raw, "struct_atr_sl", 0.8)),
         vol_atr_sl=float(_get(boll_raw, "vol_atr_sl", 2.0)),
         mid_atr_tp=float(_get(boll_raw, "mid_atr_tp", 0.2)),
+        mid_atr_tp2=float(_get(boll_raw, "mid_atr_tp2", 0.5)),
         uplow_atr_tp=float(_get(boll_raw, "uplow_atr_tp", 0.1)),
         ma_period=int(_get(boll_raw, "ma_period", 50)),
         time_offset_hours=float(_get(boll_raw, "time_offset_hours", 0.0)),
@@ -124,6 +128,8 @@ def load_settings(path: str | Path) -> AppSettings:
         cooldown_bars_after=int(_get(boll_raw, "cooldown_bars_after", 0)),
         cooldown_seconds=int(_get(boll_raw, "cooldown_seconds", 0)),
         min_confidence=float(_get(boll_raw, "min_confidence", 0.0)),
+        gap_cooldown_bars=int(_get(boll_raw, "gap_cooldown_bars", 5)),
+        gap_threshold_multiplier=float(_get(boll_raw, "gap_threshold_multiplier", 1.5)),
     )
     strategy = StrategySettings(boll_mr=boll)
     return AppSettings(broker=broker, paths=paths, strategy=strategy)

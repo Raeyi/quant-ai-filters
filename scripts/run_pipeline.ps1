@@ -24,9 +24,12 @@ param(
     [Nullable[double]]$StructAtrSl = $null,
     [Nullable[double]]$VolAtrSl = $null,
     [Nullable[double]]$MidAtrTp = $null,
+    [Nullable[double]]$MidAtrTp2 = $null,
     [Nullable[double]]$UplowAtrTp = $null,
     [Nullable[int]]$MaPeriod = $null,
-    [Nullable[int]]$ProgressStep = $null
+    [Nullable[int]]$ProgressStep = $null,
+    [Nullable[int]]$GapCooldownBars = $null,
+    [Nullable[double]]$GapThresholdMultiplier = $null
 )
 
 $ErrorActionPreference = "Stop"
@@ -206,11 +209,20 @@ if ($VolAtrSl -ne $null) {
 if ($MidAtrTp -ne $null) {
     $args += @("--mid-atr-tp", $MidAtrTp)
 }
+if ($MidAtrTp2 -ne $null) {
+    $args += @("--mid-atr-tp2", $MidAtrTp2)
+}
 if ($UplowAtrTp -ne $null) {
     $args += @("--uplow-atr-tp", $UplowAtrTp)
 }
 if ($MaPeriod -ne $null) {
     $args += @("--ma-period", $MaPeriod)
+}
+if ($GapCooldownBars -ne $null) {
+    $args += @("--gap-cooldown-bars", $GapCooldownBars)
+}
+if ($GapThresholdMultiplier -ne $null) {
+    $args += @("--gap-threshold-multiplier", $GapThresholdMultiplier)
 }
 if ($ProgressStep -ne $null -and $ProgressStep -gt 0) {
     $args += @("--progress-step", $ProgressStep)

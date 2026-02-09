@@ -146,8 +146,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--struct-atr-sl", type=float, default=None)
     parser.add_argument("--vol-atr-sl", type=float, default=None)
     parser.add_argument("--mid-atr-tp", type=float, default=None)
+    parser.add_argument("--mid-atr-tp2", type=float, default=None)
     parser.add_argument("--uplow-atr-tp", type=float, default=None)
     parser.add_argument("--ma-period", type=int, default=None)
+    parser.add_argument("--gap-cooldown-bars", type=int, default=None)
+    parser.add_argument("--gap-threshold-multiplier", type=float, default=None)
     parser.add_argument("--progress-step", type=int, default=0, help="Print progress every N bars")
     parser.add_argument("--diagnose-signals", action="store_true", help="Print signal diagnostics")
     return parser.parse_args()
@@ -187,6 +190,7 @@ def main() -> None:
         struct_atr_sl=args.struct_atr_sl if args.struct_atr_sl is not None else cfg_boll.struct_atr_sl,
         vol_atr_sl=args.vol_atr_sl if args.vol_atr_sl is not None else cfg_boll.vol_atr_sl,
         bool_mid_atr_tp=args.mid_atr_tp if args.mid_atr_tp is not None else cfg_boll.mid_atr_tp,
+        bool_mid_atr_tp2=args.mid_atr_tp2 if args.mid_atr_tp2 is not None else cfg_boll.mid_atr_tp2,
         bool_uplow_atr_tp=args.uplow_atr_tp if args.uplow_atr_tp is not None else cfg_boll.uplow_atr_tp,
         ma_period=args.ma_period if args.ma_period is not None else cfg_boll.ma_period,
         point=point,
@@ -198,6 +202,14 @@ def main() -> None:
         cooldown_bars_after=cfg_boll.cooldown_bars_after,
         cooldown_seconds=cfg_boll.cooldown_seconds,
         min_confidence=cfg_boll.min_confidence,
+        gap_cooldown_bars=(
+            args.gap_cooldown_bars if args.gap_cooldown_bars is not None else cfg_boll.gap_cooldown_bars
+        ),
+        gap_threshold_multiplier=(
+            args.gap_threshold_multiplier
+            if args.gap_threshold_multiplier is not None
+            else cfg_boll.gap_threshold_multiplier
+        ),
     )
     strategy = BollMeanReversionStrategy(params, progress_step=args.progress_step)
     features = strategy.build_features(df)

@@ -21,6 +21,7 @@ class BollMeanReversionParams:
     struct_atr_sl: float = 0.8
     vol_atr_sl: float = 2.0
     bool_mid_atr_tp: float = 0.2
+    bool_mid_atr_tp2: float = 0.5
     bool_uplow_atr_tp: float = 0.1
     ma_period: int = 50
     entry_mode: str = "A"
@@ -33,6 +34,8 @@ class BollMeanReversionParams:
     cooldown_bars_after: int = 0
     cooldown_seconds: int = 0
     min_confidence: float = 0.0
+    gap_cooldown_bars: int = 5
+    gap_threshold_multiplier: float = 1.5
 
 
 class BollMeanReversionStrategy:
@@ -98,17 +101,23 @@ class BollMeanReversionStrategy:
 
         close0 = df["close"]
         close1 = df["close"].shift(1)
+        close2 = df["close"].shift(2)
         high1 = df["high"].shift(1)
+        high2 = df["high"].shift(2)
         low1 = df["low"].shift(1)
+        low2 = df["low"].shift(2)
 
-        # MT5 CopyBuffer for Bollinger starts at shift=1 (closed bar),
-        # so GetBoll*(0) maps to bands.shift(1) and GetBoll*(1) maps to shift(2).
-        boll_u0 = bands["upper"].shift(1)
-        boll_u1 = bands["upper"].shift(2)
-        boll_m0 = bands["mid"].shift(1)
-        boll_m1 = bands["mid"].shift(2)
-        boll_l0 = bands["lower"].shift(1)
-        boll_l1 = bands["lower"].shift(2)
+        # MT5 CopyBuffer aligns with shift indices (start_pos=0),
+        # so GetBoll*(0) maps to bands.shift(0), GetBoll*(1) maps to shift(1), etc.
+        boll_u0 = bands["upper"].shift(0)
+        boll_u1 = bands["upper"].shift(1)
+        boll_u2 = bands["upper"].shift(2)
+        boll_m0 = bands["mid"].shift(0)
+        boll_m1 = bands["mid"].shift(1)
+        boll_m2 = bands["mid"].shift(2)
+        boll_l0 = bands["lower"].shift(0)
+        boll_l1 = bands["lower"].shift(1)
+        boll_l2 = bands["lower"].shift(2)
 
         atr1 = atr_series.shift(1)
         atr_mean10 = atr_series.shift(1).rolling(10).mean()
@@ -119,6 +128,7 @@ class BollMeanReversionStrategy:
 
         position = 0
         open_time: Optional[pd.Timestamp] = None
+        gap_skip_bars_remaining = 0
         signals = []
         events = []
         signal_state = 0
@@ -131,14 +141,20 @@ class BollMeanReversionStrategy:
             values = (
                 close0.iloc[idx],
                 close1.iloc[idx],
+                close2.iloc[idx],
                 high1.iloc[idx],
+                high2.iloc[idx],
                 low1.iloc[idx],
+                low2.iloc[idx],
                 boll_u0.iloc[idx],
                 boll_u1.iloc[idx],
+                boll_u2.iloc[idx],
                 boll_m0.iloc[idx],
                 boll_m1.iloc[idx],
+                boll_m2.iloc[idx],
                 boll_l0.iloc[idx],
                 boll_l1.iloc[idx],
+                boll_l2.iloc[idx],
                 atr1.iloc[idx],
                 atr_mean10.iloc[idx],
                 ma0.iloc[idx],
@@ -152,14 +168,57 @@ class BollMeanReversionStrategy:
                 continue
             bump("bars_valid")
 
-            c0, c1, h1, l1, bu0, bu1, bm0, bm1, bl0, bl1, a1, a_mean, m0, m1, m10 = values
+            (
+                c0,
+                c1,
+                c2,
+                h1,
+                h2,
+                l1,
+                l2,
+                bu0,
+                bu1,
+                bu2,
+                bm0,
+                bm1,
+                bm2,
+                bl0,
+                bl1,
+                bl2,
+                a1,
+                a_mean,
+                m0,
+                m1,
+                m10,
+            ) = values
 
-            middle_up = bm0 >= bm1
-            middle_down = bm0 <= bm1
-            if middle_up:
+            middle_up_closed = bm1 >= bm2
+            middle_down_closed = bm1 <= bm2
+            middle_up_current = bm0 >= bm1
+            middle_down_current = bm0 <= bm1
+            if middle_up_closed:
                 bump("middle_up")
-            if middle_down:
+            if middle_down_closed:
                 bump("middle_down")
+
+            if gap_skip_bars_remaining > 0:
+                gap_skip_bars_remaining -= 1
+                bump("bars_skipped_gap")
+                signals.append(position)
+                events.append(None)
+                continue
+
+            if idx >= 2 and self.params.gap_cooldown_bars > 0:
+                prev_ts = df.index[idx - 1]
+                prev_prev_ts = df.index[idx - 2]
+                expected_delta = prev_ts - prev_prev_ts
+                actual_delta = ts - prev_ts
+                if expected_delta.total_seconds() > 0 and actual_delta > expected_delta * self.params.gap_threshold_multiplier:
+                    gap_skip_bars_remaining = self.params.gap_cooldown_bars
+                    bump("gap_detected")
+                    signals.append(position)
+                    events.append(None)
+                    continue
 
             diff = m0 - m10
             slope_abs = abs(diff) / (10.0 * self.params.point) if self.params.point > 0 else 0.0
@@ -171,7 +230,7 @@ class BollMeanReversionStrategy:
             if short_trend_ok:
                 bump("short_trend_ok")
 
-            trend_state = self._trend_state(m0, m1, middle_up, middle_down)
+            trend_state = self._trend_state(m0, m1, middle_up_current, middle_down_current)
             bump(f"trend_{trend_state.lower()}")
 
             def volatility_ok() -> bool:
@@ -195,34 +254,44 @@ class BollMeanReversionStrategy:
                 if self.params.entry_mode == "A":
                     ok = (
                         long_trend_ok
-                        and c1 < bl1
-                        and c0 > bl0
-                        and middle_up
+                        and c2 < bl2
+                        and c1 > bl1
+                        and c1 <= bm1
+                        and middle_up_closed
                         and volatility_ok()
                     )
-                    if c1 < bl1:
-                        bump("long_c1_below_bl1")
-                    if c0 > bl0:
-                        bump("long_c0_above_bl0")
+                    if c2 < bl2:
+                        bump("long_c2_below_bl2")
+                    if c1 > bl1:
+                        bump("long_c1_above_bl1")
+                    if c1 <= bm1:
+                        bump("long_c1_below_mid1")
                     if volatility_ok():
                         bump("vol_ok")
                     return ok
                 if self.params.entry_mode == "B":
-                    wick_break = l1 < bl1
-                    close_recover = c0 > bl0
+                    wick_break = l2 < bl2
+                    close_recover = c1 > bl1
                     if wick_break:
                         bump("long_wick_break")
                     if close_recover:
                         bump("long_close_recover")
                     if volatility_ok():
                         bump("vol_ok")
-                    return long_trend_ok and wick_break and close_recover and middle_up and volatility_ok()
+                    return (
+                        long_trend_ok
+                        and wick_break
+                        and close_recover
+                        and c1 <= bm1
+                        and middle_up_closed
+                        and volatility_ok()
+                    )
                 if self.params.entry_mode == "C":
                     if trend_state == "BEAR":
                         return False
                     if volatility_ok():
                         bump("vol_ok")
-                    return c1 < bl1 and c0 > bl0 and volatility_ok()
+                    return c2 < bl2 and c1 > bl1 and c1 <= bm1 and volatility_ok()
                 return False
 
             def short_signal() -> bool:
@@ -236,34 +305,44 @@ class BollMeanReversionStrategy:
                 if self.params.entry_mode == "A":
                     ok = (
                         short_trend_ok
-                        and c1 > bu1
-                        and c0 < bu0
-                        and middle_down
+                        and c2 > bu2
+                        and c1 < bu1
+                        and c1 >= bm1
+                        and middle_down_closed
                         and volatility_ok()
                     )
-                    if c1 > bu1:
-                        bump("short_c1_above_bu1")
-                    if c0 < bu0:
-                        bump("short_c0_below_bu0")
+                    if c2 > bu2:
+                        bump("short_c2_above_bu2")
+                    if c1 < bu1:
+                        bump("short_c1_below_bu1")
+                    if c1 >= bm1:
+                        bump("short_c1_above_mid1")
                     if volatility_ok():
                         bump("vol_ok")
                     return ok
                 if self.params.entry_mode == "B":
-                    wick_break = h1 > bu1
-                    close_recover = c0 < bu0
+                    wick_break = h2 > bu2
+                    close_recover = c1 < bu1
                     if wick_break:
                         bump("short_wick_break")
                     if close_recover:
                         bump("short_close_recover")
                     if volatility_ok():
                         bump("vol_ok")
-                    return short_trend_ok and wick_break and close_recover and middle_down and volatility_ok()
+                    return (
+                        short_trend_ok
+                        and wick_break
+                        and close_recover
+                        and c1 >= bm1
+                        and middle_down_closed
+                        and volatility_ok()
+                    )
                 if self.params.entry_mode == "C":
                     if trend_state == "BULL":
                         return False
                     if volatility_ok():
                         bump("vol_ok")
-                    return c1 > bu1 and c0 < bu0 and volatility_ok()
+                    return c2 > bu2 and c1 < bu1 and c1 >= bm1 and volatility_ok()
                 return False
 
             def exit_signal() -> bool:
@@ -278,23 +357,34 @@ class BollMeanReversionStrategy:
 
                 bid_now = c0
                 bid_prev = c1
+                middle_ref = bm1
                 if position > 0:
                     if (
-                        bid_prev < bm1
-                        and bid_now >= bm0
-                        and abs(bid_now - bm0) < a1 * self.params.bool_mid_atr_tp
+                        bid_prev >= middle_ref
+                        and bid_now < middle_ref
                     ):
                         return True
-                    if bid_now >= bu1 - a1 * self.params.bool_uplow_atr_tp:
+                    level1 = middle_ref + a1 * self.params.bool_mid_atr_tp
+                    level2 = middle_ref + a1 * self.params.bool_mid_atr_tp2
+                    if bid_now >= level1:
+                        return True
+                    if bid_now >= level2:
+                        return True
+                    if bid_now >= bu1:
                         return True
                 else:
                     if (
-                        bid_prev > bm1
-                        and bid_now <= bm0
-                        and abs(bid_now - bm0) < a1 * self.params.bool_mid_atr_tp
+                        bid_prev <= middle_ref
+                        and bid_now > middle_ref
                     ):
                         return True
-                    if bid_now <= bl1 + a1 * self.params.bool_uplow_atr_tp:
+                    level1 = middle_ref - a1 * self.params.bool_mid_atr_tp
+                    level2 = middle_ref - a1 * self.params.bool_mid_atr_tp2
+                    if bid_now <= level1:
+                        return True
+                    if bid_now <= level2:
+                        return True
+                    if bid_now <= bl1:
                         return True
                 return False
 
