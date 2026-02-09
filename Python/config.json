@@ -1,4 +1,4 @@
-﻿{
+{
   "active_profile": "backtest",
   "profiles": {
     "backtest": {
@@ -7,8 +7,11 @@
         "spread_points": 0.0,
         "commission_per_lot": 0.0,
         "slippage_points": 0.0,
-        "lot_size": 100000,
-        "point": 0.0001
+        "lot_size": 100,
+        "point": 0.01,
+        "initial_cash": 500,
+        "leverage": 1000,
+        "trade_lot": 0.01
       },
       "paths": {
         "data_root": "data",
@@ -33,7 +36,7 @@
           "ma_period": 48,
           "gap_cooldown_bars": 5,
           "gap_threshold_multiplier": 1.5,
-          "time_offset_hours": -6,
+          "time_offset_hours": 0,
           "max_holding_bars": 12,
           "max_daily_loss_percent": 3.0,
           "risk_percent": 0.5,
@@ -50,8 +53,11 @@
         "spread_points": 0.0,
         "commission_per_lot": 0.0,
         "slippage_points": 0.0,
-        "lot_size": 100000,
-        "point": 0.0001
+        "lot_size": 100,
+        "point": 0.01,
+        "initial_cash": 500,
+        "leverage": 1000,
+        "trade_lot": 0.01
       },
       "paths": {
         "data_root": "data",
@@ -76,7 +82,7 @@
           "ma_period": 48,
           "gap_cooldown_bars": 5,
           "gap_threshold_multiplier": 1.5,
-          "time_offset_hours": -6,
+          "time_offset_hours": 0,
           "max_holding_bars": 12,
           "max_daily_loss_percent": 3.0,
           "risk_percent": 0.5,

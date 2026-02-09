@@ -48,9 +48,12 @@ python backtest.py --help
    - `active_profile` 选择 `backtest` 或 `live`
    - `paths.mt5_root`：MT5 导出数据的根目录
    - `paths.mt5_common_root`：MT5 Common/Files 根目录（features/signals 导出）
-   - `paths.third_party_root`：第三方数据根目录（Dukascopy/TrueFX）
-   - `paths.data_root`：Python 相对路径的默认根目录
-   - `strategy.boll_mr`：回测策略参数（需与 MT5 输入一致）
+- `paths.third_party_root`：第三方数据根目录（Dukascopy/TrueFX）
+- `paths.data_root`：Python 相对路径的默认根目录
+- `strategy.boll_mr`：回测策略参数（需与 MT5 输入一致）
+- `broker.initial_cash`：回测初始资金（建议与 MT5 回测入金一致）
+- `broker.leverage`：回测杠杆（用于保证金约束，建议与 MT5 一致）
+- `broker.trade_lot`：回测每次下单手数（默认 0.01；用于保证金与收益缩放）
 2. 准备数据：
    - MT5 导出（K 线 OHLC）使用 `--source mt5`
    - 第三方 OHLC 使用 `--source dukascopy` 或 `--source truefx`

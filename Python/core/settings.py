@@ -14,6 +14,9 @@ class BrokerSettings:
     slippage_points: float = 0.0
     lot_size: int = 100000
     point: float = 0.0001
+    initial_cash: float = 10000.0
+    leverage: float = 1.0
+    trade_lot: float = 0.01
 
 
 @dataclass
@@ -98,6 +101,9 @@ def load_settings(path: str | Path) -> AppSettings:
         slippage_points=float(_get(broker_raw, "slippage_points", 0.0)),
         lot_size=int(_get(broker_raw, "lot_size", 100000)),
         point=float(_get(broker_raw, "point", 0.0001)),
+        initial_cash=float(_get(broker_raw, "initial_cash", 10000.0)),
+        leverage=float(_get(broker_raw, "leverage", 1.0)),
+        trade_lot=float(_get(broker_raw, "trade_lot", 0.01)),
     )
 
     paths = DataPaths(

@@ -22,8 +22,8 @@ def _apply_risk_controls(
     params: BollMeanReversionParams,
 ) -> pd.Series:
     price = df["close"]
-    position = 0
-    prev_position = 0
+    position = 0.0
+    prev_position = 0.0
     entry_price = None
     bars_held = 0
     cooldown_until = None
@@ -51,6 +51,7 @@ def _apply_risk_controls(
         if confidence is not None and params.min_confidence > 0:
             if confidence.iloc[idx] < params.min_confidence:
                 desired_pos = 0
+        desired_lot = float(desired_pos) * config.trade_lot
 
         if position != 0:
             bars_held += 1
@@ -58,7 +59,7 @@ def _apply_risk_controls(
                 desired_pos = 0
 
         # handle reversals as exit then optional entry
-        wants_reverse = position != 0 and desired_pos != 0 and desired_pos != position
+        wants_reverse = position != 0 and desired_pos != 0 and (desired_pos > 0) != (position > 0)
 
         if position != 0 and (desired_pos == 0 or wants_reverse):
             # exit
@@ -88,7 +89,16 @@ def _apply_risk_controls(
             if daily_block or cooldown_bars > 0 or cooldown_until is not None:
                 desired_pos = 0
             else:
-                position = 1 if desired_pos > 0 else -1
+                # simple margin check
+                if config.leverage and config.leverage > 0:
+                    required_margin = float(price.iloc[idx]) * config.lot_size * abs(desired_lot) / config.leverage
+                    if equity < required_margin:
+                        desired_pos = 0
+                if desired_pos == 0:
+                    executed.append(position)
+                    prev_position = position
+                    continue
+                position = desired_lot
                 entry_price = float(price.iloc[idx])
                 bars_held = 0
 
@@ -125,10 +135,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--symbol", default="EURUSD", help="Symbol name")
     parser.add_argument("--timeframe", default="M15", help="Timeframe label (e.g. M5, M15, H1)")
     parser.add_argument("--resample", default="", help="Optional pandas resample rule, e.g. 15T or 1H")
-    parser.add_argument("--initial-cash", type=float, default=10000.0)
+    parser.add_argument("--initial-cash", type=float, default=None)
     parser.add_argument("--spread-points", type=float, default=None)
     parser.add_argument("--commission", type=float, default=None)
     parser.add_argument("--point", type=float, default=None)
+    parser.add_argument("--trade-lot", type=float, default=None)
     parser.add_argument("--lot-size", type=int, default=None)
     parser.add_argument("--tz", default="", help="Optional timezone for parsing time")
     parser.add_argument("--export-features", default="", help="Output path for features CSV")
@@ -173,6 +184,9 @@ def main() -> None:
     commission = args.commission if args.commission is not None else settings.broker.commission_per_lot
     point = args.point if args.point is not None else settings.broker.point
     lot_size = args.lot_size if args.lot_size is not None else settings.broker.lot_size
+    initial_cash = args.initial_cash if args.initial_cash is not None else settings.broker.initial_cash
+    leverage = settings.broker.leverage
+    trade_lot = args.trade_lot if args.trade_lot is not None else settings.broker.trade_lot
 
     cfg_boll = settings.strategy.boll_mr
     params = BollMeanReversionParams(
@@ -227,11 +241,13 @@ def main() -> None:
     config = BacktestConfig(
         symbol=args.symbol,
         timeframe=args.timeframe,
-        initial_cash=args.initial_cash,
+        initial_cash=initial_cash,
         spread_points=spread_points,
         commission_per_lot=commission,
         point=point,
         lot_size=lot_size,
+        leverage=leverage,
+        trade_lot=trade_lot,
     )
 
     if params.min_confidence > 0:
