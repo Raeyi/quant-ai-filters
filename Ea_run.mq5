@@ -85,6 +85,7 @@ int g_gap_skip_bars_remaining = 0;
 int g_file = INVALID_HANDLE;
 int g_signal_file = INVALID_HANDLE;
 int g_signal_pos = 0;
+int g_signal_state = 0;
 
 //---------------- 新 bar 检测（沿用你旧 EA 的） ----------------
 bool IsNewBar()
@@ -193,7 +194,7 @@ int OnInit()
                             FILE_WRITE | FILE_CSV | FILE_COMMON | FILE_SHARE_WRITE);
    if(g_signal_file != INVALID_HANDLE)
    {
-      FileWrite(g_signal_file, "time","signal","source");
+      FileWrite(g_signal_file, "time","signal","event","source");
       Print("Signals file opened.");
    }
    else
@@ -254,18 +255,37 @@ void OnTick()
    Signal signal; // 声明信号变量
    signal = manager.GetSignal(); // 获取策略信号
 
+   int signal_event = 0;
+   bool has_event = false;
    if(signal.type == SIGNAL_BUY)
+   {
       g_signal_pos = 1;
+      signal_event = 1;
+      has_event = true;
+   }
    else if(signal.type == SIGNAL_SELL)
+   {
       g_signal_pos = -1;
+      signal_event = -1;
+      has_event = true;
+   }
    else if(signal.type == SIGNAL_EXIT)
+   {
       g_signal_pos = 0;
+      signal_event = 0;
+      has_event = true;
+   }
+
+   // signal_state tracks the last known position state (sticky)
+   if(has_event)
+      g_signal_state = g_signal_pos;
 
    if(g_signal_file != INVALID_HANDLE)
    {
       FileWrite(g_signal_file,
-                TimeToString(iTime(_Symbol, _Period, 1), TIME_DATE|TIME_SECONDS),
-                g_signal_pos,
+                TimeToString(iTime(_Symbol, _Period, 0), TIME_DATE|TIME_SECONDS),
+                g_signal_state,
+                (has_event ? IntegerToString(signal_event) : ""),
                 signal.source);
    }
 

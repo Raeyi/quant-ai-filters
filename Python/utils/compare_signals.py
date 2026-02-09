@@ -12,6 +12,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--python", required=True, help="Python signals.csv path")
     parser.add_argument("--mt5", required=True, help="MT5 signals CSV path")
     parser.add_argument("--out", default="", help="Optional diff CSV output path")
+    parser.add_argument("--python-signal-col", default="signal", help="Signal column name in Python CSV")
+    parser.add_argument("--mt5-signal-col", default="signal", help="Signal column name in MT5 CSV")
     parser.add_argument("--start-time", default="", help="Filter start time (YYYY-MM-DD HH:MM:SS)")
     parser.add_argument("--end-time", default="", help="Filter end time (YYYY-MM-DD HH:MM:SS)")
     parser.add_argument(
@@ -56,19 +58,20 @@ def _read_csv_with_fallback(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def _read_signals(path: str) -> pd.DataFrame:
+def _read_signals(path: str, signal_col: str) -> pd.DataFrame:
     df = _read_csv_with_fallback(path)
-    if "time" not in df.columns or "signal" not in df.columns:
-        raise ValueError("signals file must include 'time' and 'signal' columns")
+    if "time" not in df.columns or signal_col not in df.columns:
+        raise ValueError(f"signals file must include 'time' and '{signal_col}' columns")
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
     df = df.set_index("time")
-    return df[["signal"]].rename(columns={"signal": "signal"})
+    series = df[signal_col].fillna(0)
+    return pd.DataFrame({"signal": series})
 
 
 def main() -> None:
     args = _parse_args()
-    py = _read_signals(args.python).rename(columns={"signal": "py_signal"})
-    mt5 = _read_signals(args.mt5).rename(columns={"signal": "mt5_signal"})
+    py = _read_signals(args.python, args.python_signal_col).rename(columns={"signal": "py_signal"})
+    mt5 = _read_signals(args.mt5, args.mt5_signal_col).rename(columns={"signal": "mt5_signal"})
     if args.mt5_offset_hours:
         mt5.index = mt5.index + pd.Timedelta(hours=args.mt5_offset_hours)
 

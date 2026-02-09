@@ -4,7 +4,7 @@
     "backtest": {
       "broker": {
         "name": "ECMarkets",
-        "spread_points": 0.0,
+        "spread_points": 2.6,
         "commission_per_lot": 0.0,
         "slippage_points": 0.0,
         "lot_size": 100,
@@ -50,7 +50,7 @@
     "live": {
       "broker": {
         "name": "ECMarkets",
-        "spread_points": 0.0,
+        "spread_points": 2.6,
         "commission_per_lot": 0.0,
         "slippage_points": 0.0,
         "lot_size": 100,

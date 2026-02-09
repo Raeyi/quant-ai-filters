@@ -88,7 +88,13 @@ class BollMeanReversionStrategy:
             return "BEAR"
         return "FLAT"
 
-    def generate_signals(self, df: pd.DataFrame, diagnose: bool = False) -> pd.Series:
+    def generate_signals(
+        self,
+        df: pd.DataFrame,
+        diagnose: bool = False,
+        debug_index: Optional[int] = None,
+        debug_window: int = 2,
+    ) -> pd.Series:
         diag: dict[str, int] = {}
         def bump(key: str, inc: int = 1) -> None:
             if not diagnose:
@@ -99,6 +105,7 @@ class BollMeanReversionStrategy:
         atr_series = atr(df, self.params.atr_period)
         ma_series = ema(df["close"], self.params.ma_period)
 
+        open0 = df["open"]
         close0 = df["close"]
         close1 = df["close"].shift(1)
         close2 = df["close"].shift(2)
@@ -129,6 +136,11 @@ class BollMeanReversionStrategy:
         position = 0
         open_time: Optional[pd.Timestamp] = None
         gap_skip_bars_remaining = 0
+        period_seconds = 0.0
+        if len(df.index) > 1:
+            diffs = df.index.to_series().diff().dropna().dt.total_seconds()
+            if not diffs.empty:
+                period_seconds = float(diffs.median())
         signals = []
         events = []
         signal_state = 0
@@ -138,6 +150,10 @@ class BollMeanReversionStrategy:
             if self.progress_step and idx % self.progress_step == 0:
                 print(f"[progress] {idx}/{total}", flush=True)
             bump("bars_total")
+            debug_active = debug_index is not None and abs(idx - debug_index) <= max(debug_window, 0)
+            def debug_print(msg: str) -> None:
+                if debug_active:
+                    print(f"[debug] {ts} idx={idx} {msg}")
             values = (
                 close0.iloc[idx],
                 close1.iloc[idx],
@@ -163,6 +179,7 @@ class BollMeanReversionStrategy:
             )
             if any(pd.isna(v) for v in values):
                 bump("bars_skipped_nan")
+                debug_print("skipped_nan")
                 signals.append(position)
                 events.append(None)
                 continue
@@ -204,18 +221,20 @@ class BollMeanReversionStrategy:
             if gap_skip_bars_remaining > 0:
                 gap_skip_bars_remaining -= 1
                 bump("bars_skipped_gap")
+                debug_print(f"gap_skip remaining={gap_skip_bars_remaining}")
                 signals.append(position)
                 events.append(None)
                 continue
 
-            if idx >= 2 and self.params.gap_cooldown_bars > 0:
+            if idx >= 1 and self.params.gap_cooldown_bars > 0 and period_seconds > 0:
                 prev_ts = df.index[idx - 1]
-                prev_prev_ts = df.index[idx - 2]
-                expected_delta = prev_ts - prev_prev_ts
                 actual_delta = ts - prev_ts
-                if expected_delta.total_seconds() > 0 and actual_delta > expected_delta * self.params.gap_threshold_multiplier:
+                if actual_delta.total_seconds() > period_seconds * self.params.gap_threshold_multiplier:
                     gap_skip_bars_remaining = self.params.gap_cooldown_bars
                     bump("gap_detected")
+                    debug_print(
+                        f"gap_detected period={period_seconds} actual={actual_delta} cooldown={gap_skip_bars_remaining}"
+                    )
                     signals.append(position)
                     events.append(None)
                     continue
@@ -355,7 +374,7 @@ class BollMeanReversionStrategy:
                 if reversion_failed():
                     return False
 
-                bid_now = c0
+                bid_now = open0.iloc[idx]
                 bid_prev = c1
                 middle_ref = bm1
                 if position > 0:
@@ -387,6 +406,28 @@ class BollMeanReversionStrategy:
                     if bid_now <= bl1:
                         return True
                 return False
+
+            if debug_active:
+                time_ok_dbg = self._time_filter_ok(ts)
+                vol_ok_dbg = volatility_ok()
+                debug_print(
+                    "vals "
+                    f"c0={c0} c1={c1} c2={c2} "
+                    f"bu1={bu1} bu2={bu2} bm1={bm1} bm2={bm2} bl1={bl1} bl2={bl2} "
+                    f"atr1={a1} atr_mean10={a_mean} ma0={m0} ma1={m1} ma10={m10}"
+                )
+                debug_print(
+                    "conds "
+                    f"time_ok={time_ok_dbg} long_trend_ok={long_trend_ok} short_trend_ok={short_trend_ok} "
+                    f"middle_up_closed={middle_up_closed} middle_down_closed={middle_down_closed} "
+                    f"vol_ok={vol_ok_dbg} trend={trend_state} slope_abs={slope_abs}"
+                )
+                debug_print(
+                    "checks "
+                    f"long_A={(long_trend_ok and c2 < bl2 and c1 > bl1 and c1 <= bm1 and middle_up_closed and vol_ok_dbg)} "
+                    f"short_A={(short_trend_ok and c2 > bu2 and c1 < bu1 and c1 >= bm1 and middle_down_closed and vol_ok_dbg)} "
+                    f"position={position}"
+                )
 
             if position != 0 and exit_signal():
                 position = 0

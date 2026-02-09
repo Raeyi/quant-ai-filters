@@ -11,6 +11,24 @@
 - Python 部分：高保真回测、策略研究、AI/ML/RL 集成
 - 主要品种：XAUUSD（黄金），以 M5/M15 等小周期策略为主
 
+## 路线图（Milestones）
+
+- M1 策略族拆分（Mean Reversion Family）
+- M1.a BB+ATR（基础回归）
+- M1.b BB+RSI（动能过滤）
+- M1.c BB+时间过滤（伦敦/美盘窗口）
+- M2 Trend Pullback Family v1（M15 定方向 + M5 回撤入场）
+- M2.a M15：EMA50/EMA200 方向
+- M2.b M5：回撤到 EMA20/VWAP + 小结构确认
+- M2.c 统一 SL/TP：ATR 1.0 / 1.5–2.0
+- M3 Regime Filter（先规则后 ML）
+- M3.a 输出不同策略族权重（不直接下单）
+- M3.b 指标：ATR 变化、假突破频率、回撤吞没速度
+- M4 回测评估升级
+- M4.a 不同 Regime 下胜率/回撤/收益
+- M4.b 策略间相关性矩阵
+- M4.c 连续亏损分布
+
 ## 项目结构
 
 - `/Core`：MQL5 核心模块（风控/执行/管理）

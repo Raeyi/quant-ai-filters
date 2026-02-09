@@ -17,15 +17,33 @@
 - [x] Web 面板支持列出 mt5_root CSV 列表并一键选用
 - [x] Web 面板支持导出策略参数为 .set
 - [x] Web 面板显示收益/回撤/交易次数图表
+- [x] 校验 MT5 与 Python 的 BollMR 信号逐 K 对齐（2026.01.15-2026.01.31，事件信号 1:1 对齐，匹配率 100%）
+- [x] 对齐 Python BollMR 与 MQL5 最新逻辑（入场 shift=2/1、中轨过滤、退出阈值、Bollinger 缓冲对齐、缺口冷却）
+- [x] 确认 ECMarkets 成本模型参数（点差、手续费、滑点、最小手数、点值）
 
 ## 待办
 
-- [ ] 对齐 Python BollMR 与 MQL5 最新逻辑（入场 shift=2/1、中轨过滤、退出阈值、Bollinger 缓冲对齐、缺口冷却）
 - [ ] 提供一份第三方 CSV 样例（列名/时间格式）用于解析验证
-- [ ] 确认 ECMarkets 成本模型参数（点差、手续费、滑点、最小手数、点值）
-- [ ] 校验 MT5 与 Python 的 BollMR 信号逐 K 对齐（1:1 对齐检查）
 - [ ] 增加 Dukascopy/TrueFX 下载与清洗模块
 - [ ] 扩展成交模型（点差、手续费、滑点、合约大小、手数取整）
 - [ ] 构建多策略注册与组合风控层
 - [ ] 实现 AI 过滤器流水线（训练/推理）并接入信号流程
 - [ ] 增加命令行 `--profile` 支持（可选）
+
+## 里程碑（Roadmap）
+
+- [ ] M1 策略族拆分（Mean Reversion Family）
+- [ ] M1.a BB+ATR（基础回归）
+- [ ] M1.b BB+RSI（动能过滤）
+- [ ] M1.c BB+时间过滤（伦敦/美盘窗口）
+- [ ] M2 Trend Pullback Family v1（M15 定方向 + M5 回撤入场）
+- [ ] M2.a M15：EMA50/EMA200 方向
+- [ ] M2.b M5：回撤到 EMA20/VWAP + 小结构确认
+- [ ] M2.c 统一 SL/TP：ATR 1.0 / 1.5–2.0
+- [ ] M3 Regime Filter（先规则后 ML）
+- [ ] M3.a 输出不同策略族权重（不直接下单）
+- [ ] M3.b 指标：ATR 变化、假突破频率、回撤吞没速度
+- [ ] M4 回测评估升级
+- [ ] M4.a 不同 Regime 下胜率/回撤/收益
+- [ ] M4.b 策略间相关性矩阵
+- [ ] M4.c 连续亏损分布

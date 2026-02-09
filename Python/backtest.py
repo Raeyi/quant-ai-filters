@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from ai_filters.pipeline import IdentityFilter, ZScoreThresholdFilter
 from core.config import BacktestConfig
@@ -164,6 +165,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--gap-threshold-multiplier", type=float, default=None)
     parser.add_argument("--progress-step", type=int, default=0, help="Print progress every N bars")
     parser.add_argument("--diagnose-signals", action="store_true", help="Print signal diagnostics")
+    parser.add_argument("--debug-time", default="", help="Debug a specific bar time (YYYY-MM-DD HH:MM:SS)")
+    parser.add_argument("--debug-window", type=int, default=2, help="Bars around debug-time to print")
     return parser.parse_args()
 
 
@@ -227,7 +230,28 @@ def main() -> None:
     )
     strategy = BollMeanReversionStrategy(params, progress_step=args.progress_step)
     features = strategy.build_features(df)
-    signals = strategy.generate_signals(df, diagnose=args.diagnose_signals)
+    debug_index = None
+    if args.debug_time:
+        debug_ts = pd.to_datetime(args.debug_time, errors="coerce")
+        if pd.isna(debug_ts):
+            raise ValueError("Invalid --debug-time format")
+        if df.index.tz is not None and debug_ts.tzinfo is None:
+            debug_ts = debug_ts.tz_localize(df.index.tz)
+        elif df.index.tz is None and getattr(debug_ts, "tzinfo", None) is not None:
+            debug_ts = debug_ts.tz_convert(None)
+        idx = df.index.get_indexer([debug_ts])
+        if idx[0] >= 0:
+            debug_index = int(idx[0])
+        else:
+            nearest = df.index.get_indexer([debug_ts], method="nearest")[0]
+            print(f"[debug] time not found, nearest={df.index[nearest]}")
+            debug_index = int(nearest)
+    signals = strategy.generate_signals(
+        df,
+        diagnose=args.diagnose_signals,
+        debug_index=debug_index,
+        debug_window=args.debug_window,
+    )
     if args.diagnose_signals:
         print("Signal diagnostics:")
         for key, value in (strategy.last_diagnostics or {}).items():
@@ -262,14 +286,24 @@ def main() -> None:
 
     if args.export_signals:
         export_path = Path(resolve_path(settings.paths.data_root, args.export_signals))
+        signal_dir = np.sign(filtered.signals.values)
         sig_df = pd.DataFrame(
+            {
+                "time": filtered.signals.index,
+                "signal": signal_dir,
+                "confidence": filtered.confidence.values,
+            }
+        )
+        sig_df.to_csv(export_path, index=False)
+        position_path = export_path.with_name("signals_position.csv")
+        pos_df = pd.DataFrame(
             {
                 "time": filtered.signals.index,
                 "signal": filtered.signals.values,
                 "confidence": filtered.confidence.values,
             }
         )
-        sig_df.to_csv(export_path, index=False)
+        pos_df.to_csv(position_path, index=False)
         if strategy.last_signal_state is not None:
             state_path = export_path.with_name("signals_state.csv")
             state_df = pd.DataFrame(

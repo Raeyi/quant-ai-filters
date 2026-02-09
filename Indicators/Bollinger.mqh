@@ -54,8 +54,9 @@ bool UpdateBollinger(int bars = 20)
     ArrayResize(bollLower,  bars);
 
     // IMPORTANT: // IMPORTANT: start_pos = 0 (aligns with shift indices)
-    int c1 = CopyBuffer(bollHandle, 0, 0, bars, bollUpper);
-    int c2 = CopyBuffer(bollHandle, 1, 0, bars, bollMiddle);
+        // MT5 iBands buffer order: 0=middle, 1=upper, 2=lower
+    int c1 = CopyBuffer(bollHandle, 1, 0, bars, bollUpper);
+    int c2 = CopyBuffer(bollHandle, 0, 0, bars, bollMiddle);
     int c3 = CopyBuffer(bollHandle, 2, 0, bars, bollLower);
 
     if(c1 <= 0 || c2 <= 0 || c3 <= 0)
@@ -93,3 +94,4 @@ double GetBollLower(int shift)
 }
 
 #endif // __BOLLINGER_MQH__
+
