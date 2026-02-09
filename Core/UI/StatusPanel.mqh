@@ -181,7 +181,9 @@ public:
    void Update(RiskPipeline& rp,
                PositionCoordinator& pc,
                bool ea_disabled,
-               const string &ea_reason)
+               const string &ea_reason,
+               bool time_allowed,
+               const string &time_reason)
    {
       rp.RefreshStatus();
 
@@ -260,6 +262,55 @@ public:
          }
       }
       SetText("RISK_STATUS", "风险状态: " + risk_status, risk_color);
+      bool allow_entry_time = rp.IsEntryAllowed() && time_allowed;
+      string no_trade_text2 = "禁止交易: " + string(allow_entry_time ? "否" : "是");
+      if(!allow_entry_time)
+      {
+         string reason2 = rp.GetBlockReason();
+         if(!time_allowed)
+         {
+            if(time_reason != "")
+               reason2 = time_reason;
+            else
+               reason2 = "交易时间限制";
+         }
+         if(reason2 != "")
+            no_trade_text2 += " (" + reason2 + ")";
+      }
+      SetText("NO_TRADE", no_trade_text2, allow_entry_time ? clrLime : clrRed);
+
+      string status2 = "等待信号";
+      color status_color2 = clrWhite;
+      if(has_pos)
+         status2 = "持仓中(" + IntegerToString(pos_count) + ")";
+      if(!allow_entry_time)
+      {
+         status2 = "交易受限";
+         status_color2 = clrOrange;
+      }
+      SetText("STATUS", "状态: " + status2, status_color2);
+
+      string risk_status2 = "正常";
+      color risk_color2 = clrLime;
+      if(!allow_entry_time)
+      {
+         if(!time_allowed)
+         {
+            risk_status2 = "交易时间限制";
+            risk_color2 = clrOrange;
+         }
+         else if(rp.IsInCooldown())
+         {
+            risk_status2 = "冷却中";
+            risk_color2 = clrOrange;
+         }
+         else
+         {
+            risk_status2 = "限制交易";
+            risk_color2 = clrRed;
+         }
+      }
+      SetText("RISK_STATUS", "风险状态: " + risk_status2, risk_color2);
    }
 };
 
