@@ -24,6 +24,7 @@ input double    BoolPartialExit2     = 0.25; // 第二层部分平仓比例
 input double    BoolUplowATRTP         = 0.1;  //  上轨/下轨止盈 ATR 倍数
 input int    MAPeriod = 50;              // MA周期
 input string boll_entry_mode = "A"; // 入场模式：A / B / C
+input bool   boll_LogSignalDetails = true; // 仅在信号生成时打印关键信息
 
 class Strategy_BollMR : public IStrategy
 {
@@ -107,6 +108,7 @@ public:
         {   
             if(longSig)
             {
+                LogSignalDetails("BUY", boll_entry_mode);
                 FillSignal(signal, SIGNAL_BUY);
 
                 Print("[BollMR] Long signal filled. price=", signal.price,
@@ -116,6 +118,7 @@ public:
             }
             if(shortSig)
             {
+                LogSignalDetails("SELL", boll_entry_mode);
                 FillSignal(signal, SIGNAL_SELL);
                 Print("[BollMR] Short signal filled. price=", signal.price,
                     " sl=", signal.sl, " tp=", signal.tp);
@@ -157,23 +160,23 @@ public:
         {
             if(!LongTrendOK())
                 return false;
-            return (CloseAt(1) < GetBollLower(1) &&
-                    CloseAt(0) > GetBollLower(0) && 
-                    MiddleUp() && 
+            return (CloseAt(2) < GetBollLower(2) &&
+                    CloseAt(1) > GetBollLower(1) && 
+                    MiddleUpClosed() && 
                     VolatilityOK());
         }
         else if(mode == "B") // 放宽入场条件，允许直接在下轨附近入场（影线回归增强版，更激进，但可能更早捕捉机会）
         {
             if(!LongTrendOK())
                 return false;
-            bool wick_break = LowAt(1) < GetBollLower(1);   // 影线破下轨
+            bool wick_break = LowAt(2) < GetBollLower(2);   // 影线破下轨
 
-            bool close_recover = CloseAt(0) > GetBollLower(0); // 当前K线收回轨内
+            bool close_recover = CloseAt(1) > GetBollLower(1); // 当前K线收回轨内
 
             return (
                     wick_break &&
                     close_recover &&
-                    MiddleUp() &&
+                    MiddleUpClosed() &&
                     VolatilityOK());
         }
         else if(mode == "C")
@@ -185,8 +188,8 @@ public:
                 return false;
 
             return (
-                CloseAt(1) < GetBollLower(1) &&
-                CloseAt(0) > GetBollLower(0) &&
+                CloseAt(2) < GetBollLower(2) &&
+                CloseAt(1) > GetBollLower(1) &&
                 VolatilityOK());
         }
         else
@@ -222,21 +225,21 @@ public:
         {
             if(!ShortTrendOK())
                 return false;
-            return (CloseAt(1) > GetBollUpper(1) &&
-                    CloseAt(0) < GetBollUpper(0) && 
-                    MiddleDown() && 
+            return (CloseAt(2) > GetBollUpper(2) && // 前2根K线收盘在上轨外
+                    CloseAt(1) < GetBollUpper(1) && // 前1根K线收盘回到轨内
+                    MiddleDownClosed() && 
                     VolatilityOK());
         }
         else if(mode == "B") // 放宽入场条件，允许直接在上轨附近入场（影线回归增强版，更激进，但可能更早捕捉机会）
         {
-            bool wick_break = HighAt(1) > GetBollUpper(1);   // 影线破上轨
+            bool wick_break = HighAt(2) > GetBollUpper(2);   // 前2根k线影线破上轨
 
-            bool close_recover = CloseAt(0) < GetBollUpper(0); // 当前K线收回轨内
+            bool close_recover = CloseAt(1) < GetBollUpper(1); // 前1根K线收回轨内
 
             return (
                     wick_break &&
                     close_recover &&
-                    MiddleDown() &&
+                    MiddleDownClosed() &&
                     VolatilityOK());
         }
         else if(mode == "C")
@@ -248,9 +251,9 @@ public:
                 return false;
 
             return (
-                CloseAt(1) > GetBollUpper(1) &&
-                CloseAt(0) < GetBollUpper(0) &&
-                VolatilityOK());
+                CloseAt(2) > GetBollUpper(2) && // 前2根K线收盘在上轨外
+                CloseAt(1) < GetBollUpper(1) && // 前1根K线收盘回到轨内
+                VolatilityOK()); // 波动率过滤
         }
         else
         {
@@ -330,6 +333,16 @@ public:
         return GetBollMiddle(0) <= GetBollMiddle(1);
     }
 
+    bool MiddleUpClosed() // 中轨向上（已收盘K线：1 vs 2）
+    {
+        return GetBollMiddle(1) >= GetBollMiddle(2);
+    }
+
+    bool MiddleDownClosed() // 中轨向下（已收盘K线：1 vs 2）
+    {
+        return GetBollMiddle(1) <= GetBollMiddle(2); // 已收盘K线：1 vs 2
+    }
+
     bool VolatilityOK() // 波动率过滤：当前 ATR 不超过过去 10 根 ATR 平均的 1.5 倍
     {
         double atr_now = GetATR(1);
@@ -344,14 +357,55 @@ public:
 
     bool ConfirmedReentryLong() // 确认回归多头：先出现下轨外 K 线，然后再回到轨内
     {
-        return (CloseAt(1) < GetBollLower(1) &&
-                CloseAt(0) > GetBollLower(0));
+        return (CloseAt(2) < GetBollLower(2) &&
+                CloseAt(1) > GetBollLower(1));
     }
 
     bool ConfirmedReentryShort() // 确认回归空头：先出现上轨外 K 线，然后再回到轨内
     {
-        return (CloseAt(1) > GetBollUpper(1) &&
-                CloseAt(0) < GetBollUpper(0));
+        return (CloseAt(2) > GetBollUpper(2) &&
+                CloseAt(1) < GetBollUpper(1));
+    }
+
+    void LogSignalDetails(const string direction, const string mode)
+    {
+        if(!boll_LogSignalDetails)
+            return;
+
+        int h = 0;
+        MqlDateTime ts;
+        TimeToStruct(TimeCurrent(), ts);
+        h = ts.hour;
+
+        double c2 = CloseAt(2);
+        double c1 = CloseAt(1);
+        double l2 = LowAt(2);
+        double h2 = HighAt(2);
+        double bl2 = GetBollLower(2);
+        double bl1 = GetBollLower(1);
+        double bu2 = GetBollUpper(2);
+        double bu1 = GetBollUpper(1);
+        double mid2 = GetBollMiddle(2);
+        double mid1 = GetBollMiddle(1);
+        double atr1 = GetATR(1);
+
+        Print("[BollMR] Signal ", direction,
+              " mode=", mode,
+              " time_now=", TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
+              " bar2=", TimeToString(iTime(_Symbol, _Period, 2), TIME_DATE|TIME_SECONDS),
+              " bar1=", TimeToString(iTime(_Symbol, _Period, 1), TIME_DATE|TIME_SECONDS),
+              " c2=", DoubleToString(c2, _Digits),
+              " c1=", DoubleToString(c1, _Digits),
+              " l2=", DoubleToString(l2, _Digits),
+              " h2=", DoubleToString(h2, _Digits),
+              " bl2=", DoubleToString(bl2, _Digits),
+              " bl1=", DoubleToString(bl1, _Digits),
+              " bu2=", DoubleToString(bu2, _Digits),
+              " bu1=", DoubleToString(bu1, _Digits),
+              " mid2=", DoubleToString(mid2, _Digits),
+              " mid1=", DoubleToString(mid1, _Digits),
+              " atr1=", DoubleToString(atr1, _Digits),
+              " hour=", IntegerToString(h));
     }
 
     bool LongTrendOK() // 长期趋势过滤：H1 均线向上且斜率不大（排除明显的单边趋势）
@@ -508,8 +562,7 @@ public:
         ENUM_POSITION_TYPE type =
                 (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
 
-        double middle_now  = GetBollMiddle(0);                     //  当前 K 线的中轨
-        double middle_prev = GetBollMiddle(1);                    // 上一根 K 线的中轨
+        double middle_ref  = GetBollMiddle(1);                    // 上一根已收盘 K 线中轨（固定阈值）
         double bid_now  = SymbolInfoDouble(_Symbol, SYMBOL_BID); // 最新价
         double bid_prev = iClose(_Symbol, _Period, 1);          // 前一根 K 线收盘价
         double atr = GetATR(1);
@@ -518,14 +571,14 @@ public:
         {  
             if(!ReversionFailed())
             {
-                // 回落保护：若此前在中轨上方，当前又跌回中轨下方 -> 退出
-                if(bid_prev >= middle_prev && bid_now < middle_now)
+                // 回落保护：用已收盘中轨作为固定阈值，避免当前中轨抖动
+                if(bid_prev >= middle_ref && bid_now < middle_ref)
                 {
                     return true;
                 }
 
-                double level1 = middle_now + atr * BoolMidATRTP;
-                double level2 = middle_now + atr * BoolMidATRTP2;
+                double level1 = middle_ref + atr * BoolMidATRTP;
+                double level2 = middle_ref + atr * BoolMidATRTP2;
 
                 if(exit_stage == 0 && bid_now >= level1)
                 {
@@ -553,14 +606,14 @@ public:
         {
             if(!ReversionFailed())
             {
-                // 回落保护：若此前在中轨下方，当前又涨回中轨上方 -> 退出
-                if(bid_prev <= middle_prev && bid_now > middle_now)
+                // 回落保护：用已收盘中轨作为固定阈值，避免当前中轨抖动
+                if(bid_prev <= middle_ref && bid_now > middle_ref)
                 {
                     return true;
                 }
 
-                double level1 = middle_now - atr * BoolMidATRTP;
-                double level2 = middle_now - atr * BoolMidATRTP2;
+                double level1 = middle_ref - atr * BoolMidATRTP;
+                double level2 = middle_ref - atr * BoolMidATRTP2;
 
                 if(exit_stage == 0 && bid_now <= level1)
                 {

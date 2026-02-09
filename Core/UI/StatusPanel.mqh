@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
 //| StatusPanel.mqh                                                  |
-//| 中文交易状态面板（用户视角）                                      |
+//| 状态面板（MT5）                                                  |
 //+------------------------------------------------------------------+
 #ifndef __STATUS_PANEL_MQH__
 #define __STATUS_PANEL_MQH__
@@ -10,6 +10,13 @@
 #include "../Risk/RiskPipeline.mqh"
 #include "../PositionCoordinator.mqh"
 
+input int   PanelX = 10;                 // 面板X
+input int   PanelY = 10;                 // 面板Y
+input color PanelBorderColor = clrDodgerBlue; // 面板边框
+input color PanelBgColor = clrBlack;     // 面板背景
+input int   PanelFontSize = 9;           // 字体大小
+input int   PanelLineSpacing = 15;       // 行距
+
 class StatusPanel
 {
 private:
@@ -18,6 +25,30 @@ private:
    int    x;
    int    y;
    int    line;
+   int    panel_width;
+   int    panel_height;
+   color  panel_border_color;
+   color  panel_bg_color;
+   int    font_size;
+
+   void CreateBackground()
+   {
+      string obj = prefix + "BG";
+      if(ObjectFind(0, obj) >= 0)
+         return;
+
+      ObjectCreate(0, obj, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, obj, OBJPROP_CORNER, corner);
+      ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, x);
+      ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, y);
+      ObjectSetInteger(0, obj, OBJPROP_XSIZE, panel_width);
+      ObjectSetInteger(0, obj, OBJPROP_YSIZE, panel_height);
+      ObjectSetInteger(0, obj, OBJPROP_BGCOLOR, panel_bg_color);
+      ObjectSetInteger(0, obj, OBJPROP_COLOR, panel_border_color);
+      ObjectSetInteger(0, obj, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, obj, OBJPROP_BACK, false);
+      ObjectSetInteger(0, obj, OBJPROP_SELECTABLE, false);
+   }
 
    void CreateLabel(const string name, int dy)
    {
@@ -27,19 +58,69 @@ private:
 
       ObjectCreate(0, obj, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, obj, OBJPROP_CORNER, corner);
-      ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, x);
+      ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, x + 10);
       ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, y + dy);
-      ObjectSetInteger(0, obj, OBJPROP_FONTSIZE, 10);
+      ObjectSetInteger(0, obj, OBJPROP_FONTSIZE, font_size);
       ObjectSetInteger(0, obj, OBJPROP_COLOR, clrWhite);
       ObjectSetString(0, obj, OBJPROP_FONT, "Microsoft YaHei");
    }
 
-   void SetText(const string name, const string text)
+   void SetText(const string name, const string text, color clr = clrWhite)
    {
       ObjectSetString(0, prefix + name, OBJPROP_TEXT, text);
+      ObjectSetInteger(0, prefix + name, OBJPROP_COLOR, clr);
    }
 
-   string TFToString(ENUM_TIMEFRAMES tf)
+   int CountPositions() const
+   {
+      int count = 0;
+      int total = PositionsTotal();
+      for(int i = 0; i < total; i++)
+      {
+         if(PositionGetTicket(i) == 0)
+            continue;
+         string sym = PositionGetString(POSITION_SYMBOL);
+         if(sym == _Symbol)
+            count++;
+      }
+      return count;
+   }
+
+   double SumFloatingProfit() const
+   {
+      double total_profit = 0.0;
+      int total = PositionsTotal();
+      for(int i = 0; i < total; i++)
+      {
+         if(PositionGetTicket(i) == 0)
+            continue;
+         string sym = PositionGetString(POSITION_SYMBOL);
+         if(sym == _Symbol)
+            total_profit += PositionGetDouble(POSITION_PROFIT);
+      }
+      return total_profit;
+   }
+
+   int CountTodayTrades() const
+   {
+      datetime day_start = iTime(_Symbol, PERIOD_D1, 0);
+      HistorySelect(day_start, TimeCurrent());
+
+      int deals = HistoryDealsTotal();
+      int count = 0;
+      for(int i = deals - 1; i >= 0; i--)
+      {
+         ulong deal = HistoryDealGetTicket(i);
+         if(HistoryDealGetString(deal, DEAL_SYMBOL) != _Symbol)
+            continue;
+         long entry = HistoryDealGetInteger(deal, DEAL_ENTRY);
+         if(entry == DEAL_ENTRY_IN || entry == DEAL_ENTRY_INOUT)
+            count++;
+      }
+      return count;
+   }
+
+   string TFToString(ENUM_TIMEFRAMES tf) const
    {
       switch(tf)
       {
@@ -51,7 +132,7 @@ private:
          case PERIOD_H4:  return "H4";
          case PERIOD_D1:  return "D1";
       }
-      return "未知";
+      return "UNKNOWN";
    }
 
 public:
@@ -61,77 +142,124 @@ public:
       corner = CORNER_LEFT_UPPER;
       x      = 10;
       y      = 10;
-      line   = 16;
+      line   = 15;
+      panel_width  = 320;
+      panel_height = 275;
+      panel_border_color = clrDodgerBlue;
+      panel_bg_color = clrBlack;
+      font_size = 9;
    }
 
    void Init()
    {
+      x = PanelX;
+      y = PanelY;
+      line = PanelLineSpacing;
+      panel_border_color = PanelBorderColor;
+      panel_bg_color = PanelBgColor;
+      font_size = PanelFontSize;
+
+      CreateBackground();
       int i = 0;
-      CreateLabel("TITLE",      line * i++); i++;
-      CreateLabel("SYMBOL",     line * i++);
-      CreateLabel("TIMEFRAME",  line * i++);
-      CreateLabel("TIME",       line * i++); i++;
-      CreateLabel("BALANCE",    line * i++);
-      CreateLabel("EQUITY",     line * i++);
-      CreateLabel("TODAY_PNL",  line * i++); i++;
-      CreateLabel("RISK",       line * i++);
-      CreateLabel("COOLDOWN",   line * i++); i++;
-      CreateLabel("POSITION",   line * i++);
-      CreateLabel("VOLUME",     line * i++);
-      CreateLabel("FLOAT_PNL",  line * i++);
+      CreateLabel("TITLE",        line * i++); i++;
+      CreateLabel("TIME",         line * i++);
+      CreateLabel("SYMBOL",       line * i++);
+      CreateLabel("TIMEFRAME",    line * i++);
+      CreateLabel("EA_STATE",     line * i++);
+      i++; // blank line between basic info and account
+      CreateLabel("BALANCE",      line * i++); i++;
+      CreateLabel("TODAY_PNL",    line * i++);
+      CreateLabel("FLOAT_PNL",    line * i++);
+      CreateLabel("POSITION_CNT", line * i++);
+      CreateLabel("TODAY_TRADES", line * i++);
+      CreateLabel("CONSEC_LOSS",  line * i++); i++;
+      CreateLabel("NO_TRADE",     line * i++);
+      CreateLabel("STATUS",       line * i++);
+      CreateLabel("RISK_STATUS",  line * i++);
    }
 
    void Update(RiskPipeline& rp,
-               PositionCoordinator& pc)
+               PositionCoordinator& pc,
+               bool ea_disabled,
+               const string &ea_reason)
    {
-      // ===== 标题 =====
-      SetText("TITLE", "━━━━━━━━ 交易系统状态 ━━━━━━━━");
+      rp.RefreshStatus();
 
-      // ===== 基本信息 =====
-      SetText("SYMBOL",    "品种：" + _Symbol);
-      SetText("TIMEFRAME", "周期：" + TFToString(_Period));
-      SetText("TIME",      "时间：" + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS));
+      SetText("TITLE", "=== 交易系统 ===", clrDodgerBlue);
+      SetText("TIME",   "时间(MT5): " + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS));
+      SetText("SYMBOL", "品种: " + _Symbol);
+      SetText("TIMEFRAME", "周期: " + TFToString(_Period));
+      string ea_state = ea_disabled ? "禁用" : "运行";
+      if(ea_disabled && ea_reason != "")
+         ea_state += " (" + ea_reason + ")";
+      SetText("EA_STATE", "EA状态: " + ea_state, ea_disabled ? clrOrange : clrLime);
 
-      // ===== 账户 =====
       double balance = AccountInfoDouble(ACCOUNT_BALANCE);
       double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+      SetText("BALANCE", "账户余额: $" + DoubleToString(balance, 2), clrLime);
 
-      SetText("BALANCE", "账户余额：" + DoubleToString(balance, 2));
-      SetText("EQUITY",  "账户净值：" + DoubleToString(equity, 2));
-
-      // 当日盈亏（简单版：净值 - 今日起始余额）
-      static double day_start_equity = 0;
+      static double day_start_balance = 0;
       static datetime last_day = 0;
-      datetime now_day = (datetime)(TimeCurrent() / 86400);
-
+      datetime now_day = iTime(_Symbol, PERIOD_D1, 0);
       if(now_day != last_day)
       {
-         day_start_equity = equity;
+         day_start_balance = balance;
          last_day = now_day;
       }
 
-      double today_pnl = equity - day_start_equity;
-      SetText("TODAY_PNL", "当日盈亏：" + DoubleToString(today_pnl, 2));
+      double today_pnl = balance - day_start_balance;
+      color today_color = (today_pnl >= 0.0) ? clrLime : clrRed;
+      SetText("TODAY_PNL", "当日盈亏: $" + DoubleToString(today_pnl, 2), today_color);
 
-      // ===== 风控状态 =====
-      RiskStatus rs = rp.GetStatus();
-      SetText("RISK", "风险状态：" + string(rs.allow_entry ? "允许交易" : "禁止交易"));
-      SetText("COOLDOWN", "冷却状态：" + string(rs.in_cooldown ? "是" : "否"));
+      double float_pnl = SumFloatingProfit();
+      color float_color = (float_pnl >= 0.0) ? clrLime : clrRed;
+      SetText("FLOAT_PNL", "浮动盈亏: $" + DoubleToString(float_pnl, 2), float_color);
 
-      // ===== 持仓状态 =====
-      if(pc.HasPosition())
+      int pos_count = CountPositions();
+      bool has_pos = pc.HasPosition();
+      SetText("POSITION_CNT", "持仓订单数: " + IntegerToString(pos_count));
+      SetText("TODAY_TRADES", "当日交易数: " + IntegerToString(CountTodayTrades()));
+      int consec_losses = rp.GetConsecutiveLosses();
+      SetText("CONSEC_LOSS", "连续止损数: " + IntegerToString(consec_losses),
+              consec_losses > 0 ? clrOrange : clrWhite);
+
+      bool allow_entry = rp.IsEntryAllowed();
+      string no_trade_text = "禁止交易: " + string(allow_entry ? "否" : "是");
+      if(!allow_entry)
       {
-         string dir = pc.IsLong() ? "多单" : "空单";
-         SetText("POSITION", "持仓状态：" + dir);
-         SetText("VOLUME",   "持仓手数：" + DoubleToString(pc.Volume(), 2));
-         SetText("FLOAT_PNL","浮动盈亏：" + DoubleToString(pc.FloatingProfit(), 2));
+         string reason = rp.GetBlockReason();
+         if(reason != "")
+            no_trade_text += " (" + reason + ")";
       }
-      else
+      SetText("NO_TRADE", no_trade_text, allow_entry ? clrLime : clrRed);
+
+      string status = "等待信号";
+      color status_color = clrWhite;
+      if(has_pos)
+         status = "持仓中(" + IntegerToString(pos_count) + ")";
+      if(!allow_entry)
       {
-         SetText("POSITION", "持仓状态：无");
-         SetText("VOLUME",   "持仓手数：0");
-         SetText("FLOAT_PNL","浮动盈亏：0");
+         status = "交易受限";
+         status_color = clrOrange;
       }
+      SetText("STATUS", "状态: " + status, status_color);
+
+      string risk_status = "正常";
+      color risk_color = clrLime;
+      if(!allow_entry)
+      {
+         if(rp.IsInCooldown())
+         {
+            risk_status = "冷却中";
+            risk_color = clrOrange;
+         }
+         else
+         {
+            risk_status = "限制交易";
+            risk_color = clrRed;
+         }
+      }
+      SetText("RISK_STATUS", "风险状态: " + risk_status, risk_color);
    }
 };
 

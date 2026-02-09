@@ -31,7 +31,10 @@ public:
     bool Execute(const TradeRequest &req, const string &source)
     {
         if(PositionSelect(_Symbol))
+        {
+            Print("[", source, "] Execute blocked: position already exists");
             return false;
+        }
         
         if(req.direction == TRADE_BUY)
         {
@@ -41,10 +44,24 @@ public:
 
             if(!ok)
             {
-                Print("[" + source + "] Failed to execute Buy order");
+                int err = GetLastError();
+                Print("[", source, "] Buy failed vol=", DoubleToString(req.volume, 2),
+                      " sl=", DoubleToString(req.sl, _Digits),
+                      " tp=", DoubleToString(req.tp, _Digits),
+                      " retcode=", trade.ResultRetcode(),
+                      " desc=", trade.ResultRetcodeDescription(),
+                      " comment=", trade.ResultComment(),
+                      " err=", err);
                 return false;
             }
 
+            Print("[", source, "] Buy sent ok vol=", DoubleToString(req.volume, 2),
+                  " sl=", DoubleToString(req.sl, _Digits),
+                  " tp=", DoubleToString(req.tp, _Digits),
+                  " retcode=", trade.ResultRetcode(),
+                  " order=", trade.ResultOrder(),
+                  " deal=", trade.ResultDeal(),
+                  " price=", DoubleToString(trade.ResultPrice(), _Digits));
             return ok;
         }
         else
@@ -54,10 +71,24 @@ public:
 
             if(!ok)
             {
-                Print("[" + source + "] Failed to execute Sell order");
+                int err = GetLastError();
+                Print("[", source, "] Sell failed vol=", DoubleToString(req.volume, 2),
+                      " sl=", DoubleToString(req.sl, _Digits),
+                      " tp=", DoubleToString(req.tp, _Digits),
+                      " retcode=", trade.ResultRetcode(),
+                      " desc=", trade.ResultRetcodeDescription(),
+                      " comment=", trade.ResultComment(),
+                      " err=", err);
                 return false;
             }
 
+            Print("[", source, "] Sell sent ok vol=", DoubleToString(req.volume, 2),
+                  " sl=", DoubleToString(req.sl, _Digits),
+                  " tp=", DoubleToString(req.tp, _Digits),
+                  " retcode=", trade.ResultRetcode(),
+                  " order=", trade.ResultOrder(),
+                  " deal=", trade.ResultDeal(),
+                  " price=", DoubleToString(trade.ResultPrice(), _Digits));
             return ok;
         }
             
