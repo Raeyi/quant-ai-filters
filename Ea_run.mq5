@@ -105,7 +105,11 @@ void UpdateStatusPanel()
    string reason = "";
    if(ea_disabled)
       reason = "TF " + EnumToString((ENUM_TIMEFRAMES)_Period) + " != " + EnumToString(TargetTimeframe);
-   status_panel.Update(risk_pipeline, pos_coord, ea_disabled, reason);
+   bool time_allowed = boll.TimeFilterOK();
+   string time_reason = "";
+   if(!time_allowed)
+      time_reason = "交易时间限制";
+   status_panel.Update(risk_pipeline, pos_coord, ea_disabled, reason, time_allowed, time_reason);
 }
 
 //---------------- 初始化 ----------------
