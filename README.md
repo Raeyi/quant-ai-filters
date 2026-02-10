@@ -50,6 +50,13 @@
 2. 复制本项目文件
 3. 编译 `Ea_run.mq5` 并加载到图表
 
+#### 切换 BollMR 基线/增强版
+
+在 EA 参数中设置：
+
+- `BollMRVariant = "base"`：启用基线版（纯 BB + ATR）
+- `BollMRVariant = "enhanced"`：启用增强版（含时间/趋势/分层退出）
+
 ### Python 部分（回测与研究）
 
 ```bash

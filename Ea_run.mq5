@@ -21,6 +21,7 @@
 #include "Core/Strategy.mqh"
 #include "Core/StrategyManager.mqh"
 #include "Strategies/Strategy_BollMR.mqh"
+#include "Strategies/Strategy_BollMR_Base.mqh"
 
 // 执行 & 风控
 #include "Core/TradeExecutor.mqh"
@@ -40,7 +41,8 @@
 
 //---------------- 全局对象 ----------------
 StrategyManager     manager; // 策略管理器
-Strategy_BollMR     boll; // Bollinger 均值回归策略
+Strategy_BollMR     boll_enhanced; // Bollinger 均值回归策略（增强版）
+Strategy_BollMR_Base boll_base;    // Bollinger 均值回归策略（基线版）
 
 TradeExecutor       executor; // 交易执行器
 RiskPipeline        risk_pipeline; // 风控管道
@@ -73,6 +75,9 @@ input bool AlertOnOrderFail  = true;   // 下单/平仓失败提示
 //---------------- 缺口冷却 ----------------
 input int  GapCooldownBars = 5;        // 发现停盘缺口后跳过的bar数量
 
+//---------------- BollMR 版本 ----------------
+input string BollMRVariant = "enhanced"; // base / enhanced
+
 //---------------- 运行时状态 ----------------
 bool g_period_valid = true;
 bool g_period_warned = false;
@@ -80,6 +85,7 @@ datetime g_suppress_chart_event_until = 0;
 string g_template_key = "";
 datetime g_last_bar_time = 0;
 int g_gap_skip_bars_remaining = 0;
+bool g_use_boll_base = false;
 
 // 指标导出文件句柄（如果需要导出 features）
 int g_file = INVALID_HANDLE;
@@ -106,7 +112,7 @@ void UpdateStatusPanel()
    string reason = "";
    if(ea_disabled)
       reason = "TF " + EnumToString((ENUM_TIMEFRAMES)_Period) + " != " + EnumToString(TargetTimeframe);
-   bool time_allowed = boll.TimeFilterOK();
+   bool time_allowed = g_use_boll_base ? true : boll_enhanced.TimeFilterOK();
    string time_reason = "";
    if(!time_allowed)
       time_reason = "交易时间限制";
@@ -160,10 +166,16 @@ int OnInit()
    EventSetTimer(1); // 每秒刷新面板时间显示
 
    // 1. 策略管理器：挂上 Bollinger 策略
-   manager.Add(&boll);
+   string variant = BollMRVariant;
+   StringToLower(variant);
+   g_use_boll_base = (variant == "base");
+   if(g_use_boll_base)
+      manager.Add(&boll_base);
+   else
+      manager.Add(&boll_enhanced);
 
    // 2. 初始化策略
-    if(!boll.Init())
+    if(g_use_boll_base ? !boll_base.Init() : !boll_enhanced.Init())
     {
         Print("Failed to initialize BollMR strategy");
         return INIT_FAILED;
@@ -245,7 +257,7 @@ void OnTick()
    }
 
    // 指标数据更新
-   if(!boll.UpdateIndicators())
+   if(g_use_boll_base ? !boll_base.UpdateIndicators() : !boll_enhanced.UpdateIndicators())
    {
       return;
    }
