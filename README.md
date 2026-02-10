@@ -342,3 +342,68 @@ scripts\run_pipeline.cmd -Data XAUUSD_M5_202409050345_202602062350.csv -Source m
 - `run_pipeline.cmd` 是 Windows 的快捷入口，它会调用 `run_pipeline.ps1`
 - 脚本会依次执行：回测 -> 导出 features/signals -> 构建训练集 ->（可选）信号对齐对比
 - 如果不传策略参数，脚本会使用 `config.json` 里的 `strategy.boll_mr` 默认值
+
+## 参数敏感性（小规模网格）
+
+使用 `Python/utils/param_sweep.py` 做小规模参数扫掠：
+
+```bash
+python Python/utils/param_sweep.py ^
+  --config Python/config.json ^
+  --source mt5 ^
+  --data XAUUSD_M5.csv ^
+  --symbol XAUUSD ^
+  --timeframe M5 ^
+  --grid "boll_period=18,20,22;boll_dev=1.8,2.0;atr_period=10,14" ^
+  --out data/param_sweep.csv
+```
+
+**Top‑N 筛选输出是啥？**  
+指只保留表现最好的 N 组参数组合。  
+例如 `--top 20 --sort total_return` 表示仅输出收益最高的 20 组。
+
+示例：
+
+```bash
+python Python/utils/param_sweep.py ^
+  --config Python/config.json ^
+  --source mt5 ^
+  --data XAUUSD_M5.csv ^
+  --symbol XAUUSD ^
+  --timeframe M5 ^
+  --grid "boll_period=18,20,22;boll_dev=1.8,2.0;atr_period=10,14" ^
+  --top 20 ^
+  --sort total_return ^
+  --sort-secondary sharpe ^
+  --out data/param_sweep_top20.csv
+```
+
+**多源对比（mt5 / dukascopy）**
+
+用 `--sources` 同时指定多个数据源（并集输出，带 `source` 列）：
+
+```bash
+python Python/utils/param_sweep.py ^
+  --config Python/config.json ^
+  --sources "mt5,dukascopy" ^
+  --data XAUUSD_M5.csv ^
+  --symbol XAUUSD ^
+  --timeframe M5 ^
+  --grid "boll_period=18,20,22;boll_dev=1.8,2.0;atr_period=10,14" ^
+  --top 20 ^
+  --sort total_return ^
+  --out data/param_sweep_multi.csv
+```
+
+可用参数键：
+`boll_period` `boll_dev` `atr_period` `ma_period` `start_hour` `end_hour`  
+`struct_atr_sl` `vol_atr_sl` `mid_atr_tp` `mid_atr_tp2` `uplow_atr_tp` `entry_mode`
+
+**排序建议**
+- 收益优先：`--sort total_return --sort-secondary sharpe`
+- 稳健优先：`--sort max_drawdown --sort-secondary sharpe`（回撤越小越好）
+
+**复盘模板**
+
+- Markdown：`docs/param_sweep_review_template.md`
+- CSV：`docs/param_sweep_review_template.csv`
