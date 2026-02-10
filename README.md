@@ -82,6 +82,11 @@
 **模式一：按盘面时段选择**
 - `BollMR_TimeMode = "session"`
 - `BollMR_Session = "asia" | "europe" | "us" | "overlap" | "europe+us"`
+  - `asia`：北京时间 08:00–16:00（亚盘）
+  - `europe`：北京时间 15:00–24:00（欧盘）
+  - `us`：北京时间 20:00–次日04:00（美盘）
+  - `overlap`：北京时间 20:00–24:00（欧/美重叠时段）
+  - `europe+us`：欧盘或美盘任一满足即允许（并集）
 
 **模式二：自定义时间段（北京时间）**
 - `BollMR_TimeMode = "custom"`

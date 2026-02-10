@@ -1,8 +1,4 @@
-//+------------------------------------------------------------------+
-//| StatusPanel.mqh                                                  |
-//| 状态面板（MT5）                                                  |
-//+------------------------------------------------------------------+
-#ifndef __STATUS_PANEL_MQH__
+﻿#ifndef __STATUS_PANEL_MQH__
 #define __STATUS_PANEL_MQH__
 
 #property strict
@@ -10,8 +6,8 @@
 #include "../Risk/RiskPipeline.mqh"
 #include "../PositionCoordinator.mqh"
 
-input int   PanelX = 10;                 // 面板X
-input int   PanelY = 10;                 // 面板Y
+input int   PanelX = 10;                 // 面板 X
+input int   PanelY = 10;                 // 面板 Y
 input color PanelBorderColor = clrDodgerBlue; // 面板边框
 input color PanelBgColor = clrBlack;     // 面板背景
 input int   PanelFontSize = 9;           // 字体大小
@@ -144,7 +140,7 @@ public:
       y      = 10;
       line   = 15;
       panel_width  = 320;
-      panel_height = 275;
+      panel_height = 295;
       panel_border_color = clrDodgerBlue;
       panel_bg_color = clrBlack;
       font_size = 9;
@@ -166,7 +162,7 @@ public:
       CreateLabel("SYMBOL",       line * i++);
       CreateLabel("TIMEFRAME",    line * i++);
       CreateLabel("EA_STATE",     line * i++);
-      i++; // blank line between basic info and account
+      i++; // 在基础信息和账户信息之间留空行
       CreateLabel("BALANCE",      line * i++); i++;
       CreateLabel("TODAY_PNL",    line * i++);
       CreateLabel("FLOAT_PNL",    line * i++);
@@ -174,6 +170,7 @@ public:
       CreateLabel("TODAY_TRADES", line * i++);
       CreateLabel("CONSEC_LOSS",  line * i++); i++;
       CreateLabel("NO_TRADE",     line * i++);
+      CreateLabel("TIME_FILTER",  line * i++);
       CreateLabel("STATUS",       line * i++);
       CreateLabel("RISK_STATUS",  line * i++);
    }
@@ -225,21 +222,33 @@ public:
       SetText("CONSEC_LOSS", "连续止损数: " + IntegerToString(consec_losses),
               consec_losses > 0 ? clrOrange : clrWhite);
 
-      bool allow_entry = rp.IsEntryAllowed();
-      string no_trade_text = "禁止交易: " + string(allow_entry ? "否" : "是");
-      if(!allow_entry)
+      bool allow_entry_time = rp.IsEntryAllowed() && time_allowed;
+      string no_trade_text = "禁止交易: " + string(allow_entry_time ? "否" : "是");
+      if(!allow_entry_time)
       {
          string reason = rp.GetBlockReason();
+         if(!time_allowed)
+         {
+            if(time_reason != "")
+               reason = time_reason;
+            else
+               reason = "交易时间限制";
+         }
          if(reason != "")
             no_trade_text += " (" + reason + ")";
       }
-      SetText("NO_TRADE", no_trade_text, allow_entry ? clrLime : clrRed);
+      SetText("NO_TRADE", no_trade_text, allow_entry_time ? clrLime : clrRed);
+
+      string time_filter_text = "时间窗口: " + string(time_allowed ? "允许" : "限制");
+      if(!time_allowed && time_reason != "")
+         time_filter_text += " (" + time_reason + ")";
+      SetText("TIME_FILTER", time_filter_text, time_allowed ? clrLime : clrOrange);
 
       string status = "等待信号";
       color status_color = clrWhite;
       if(has_pos)
          status = "持仓中(" + IntegerToString(pos_count) + ")";
-      if(!allow_entry)
+      if(!allow_entry_time)
       {
          status = "交易受限";
          status_color = clrOrange;
@@ -248,9 +257,14 @@ public:
 
       string risk_status = "正常";
       color risk_color = clrLime;
-      if(!allow_entry)
+      if(!allow_entry_time)
       {
-         if(rp.IsInCooldown())
+         if(!time_allowed)
+         {
+            risk_status = "交易时间限制";
+            risk_color = clrOrange;
+         }
+         else if(rp.IsInCooldown())
          {
             risk_status = "冷却中";
             risk_color = clrOrange;
@@ -262,55 +276,6 @@ public:
          }
       }
       SetText("RISK_STATUS", "风险状态: " + risk_status, risk_color);
-      bool allow_entry_time = rp.IsEntryAllowed() && time_allowed;
-      string no_trade_text2 = "禁止交易: " + string(allow_entry_time ? "否" : "是");
-      if(!allow_entry_time)
-      {
-         string reason2 = rp.GetBlockReason();
-         if(!time_allowed)
-         {
-            if(time_reason != "")
-               reason2 = time_reason;
-            else
-               reason2 = "交易时间限制";
-         }
-         if(reason2 != "")
-            no_trade_text2 += " (" + reason2 + ")";
-      }
-      SetText("NO_TRADE", no_trade_text2, allow_entry_time ? clrLime : clrRed);
-
-      string status2 = "等待信号";
-      color status_color2 = clrWhite;
-      if(has_pos)
-         status2 = "持仓中(" + IntegerToString(pos_count) + ")";
-      if(!allow_entry_time)
-      {
-         status2 = "交易受限";
-         status_color2 = clrOrange;
-      }
-      SetText("STATUS", "状态: " + status2, status_color2);
-
-      string risk_status2 = "正常";
-      color risk_color2 = clrLime;
-      if(!allow_entry_time)
-      {
-         if(!time_allowed)
-         {
-            risk_status2 = "交易时间限制";
-            risk_color2 = clrOrange;
-         }
-         else if(rp.IsInCooldown())
-         {
-            risk_status2 = "冷却中";
-            risk_color2 = clrOrange;
-         }
-         else
-         {
-            risk_status2 = "限制交易";
-            risk_color2 = clrRed;
-         }
-      }
-      SetText("RISK_STATUS", "风险状态: " + risk_status2, risk_color2);
    }
 };
 

@@ -19,11 +19,16 @@ int BollMR_BeijingToServerHour(int bj_hour)
     return BollMR_NormalizeHour(server_hour);
 }
 
-// 是否在一个时间窗内（支持跨午夜）
+// 是否在一个时间窗口内（支持跨午夜）
 bool BollMR_InWindow(int hour, int start_hour, int end_hour)
 {
+    // start == end 视为全天允许
+    if(start_hour == end_hour)
+        return true;
+
     if(start_hour <= end_hour)
         return (hour >= start_hour && hour < end_hour);
+
     // 跨午夜
     return (hour >= start_hour || hour < end_hour);
 }
@@ -39,7 +44,7 @@ bool BollMR_TimeFilterOK()
     string mode = BollMR_TimeMode;
     StringToLower(mode);
 
-    // custom：使用自定义开始/结束时间（按北京时间填写）
+    // custom：使用自定义开始结束时间（按北京时间填写）
     if(mode == "custom")
     {
         int start_bj = BollMR_StartHour;
@@ -49,9 +54,9 @@ bool BollMR_TimeFilterOK()
         return BollMR_InWindow(server_hour, start_sv, end_sv);
     }
 
-    // session：按盘面时段（北京时间定义）
-    string session = BollMR_Session;
-    StringToLower(session);
+    // session：按盘面时段（北京时间定义），支持逗号分隔并集
+    string sessions = BollMR_Session;
+    StringToLower(sessions);
 
     // 北京时间窗口定义（冬令时）
     int asia_start = 8,  asia_end = 16;
@@ -70,42 +75,77 @@ bool BollMR_TimeFilterOK()
         ov_end   = BollMR_NormalizeHour(ov_end   + BollMR_DSTShiftHours);
     }
 
-    if(session == "asia")
+    string list[];
+    int cnt = StringSplit(sessions, ',', list);
+    if(cnt <= 0)
     {
-        int s = BollMR_BeijingToServerHour(asia_start);
-        int e = BollMR_BeijingToServerHour(asia_end);
-        return BollMR_InWindow(server_hour, s, e);
-    }
-    if(session == "europe")
-    {
-        int s = BollMR_BeijingToServerHour(eu_start);
-        int e = BollMR_BeijingToServerHour(eu_end);
-        return BollMR_InWindow(server_hour, s, e);
-    }
-    if(session == "us")
-    {
-        int s = BollMR_BeijingToServerHour(us_start);
-        int e = BollMR_BeijingToServerHour(us_end);
-        return BollMR_InWindow(server_hour, s, e);
-    }
-    if(session == "overlap")
-    {
-        int s = BollMR_BeijingToServerHour(ov_start);
-        int e = BollMR_BeijingToServerHour(ov_end);
-        return BollMR_InWindow(server_hour, s, e);
-    }
-    if(session == "europe+us" || session == "eu+us")
-    {
-        int es = BollMR_BeijingToServerHour(eu_start);
-        int ee = BollMR_BeijingToServerHour(eu_end);
-        int us = BollMR_BeijingToServerHour(us_start);
-        int ue = BollMR_BeijingToServerHour(us_end);
-        return (BollMR_InWindow(server_hour, es, ee) ||
-                BollMR_InWindow(server_hour, us, ue));
+        ArrayResize(list, 1);
+        list[0] = sessions;
+        cnt = 1;
     }
 
-    // 默认：允许交易
-    return true;
+    bool matched_any = false;
+    for(int i = 0; i < cnt; i++)
+    {
+        string session = list[i];
+        StringTrimLeft(session);
+        StringTrimRight(session);
+        if(session == "")
+            continue;
+
+        matched_any = true;
+
+        if(session == "asia")
+        {
+            int s = BollMR_BeijingToServerHour(asia_start);
+            int e = BollMR_BeijingToServerHour(asia_end);
+            if(BollMR_InWindow(server_hour, s, e))
+                return true;
+            continue;
+        }
+        if(session == "europe")
+        {
+            int s = BollMR_BeijingToServerHour(eu_start);
+            int e = BollMR_BeijingToServerHour(eu_end);
+            if(BollMR_InWindow(server_hour, s, e))
+                return true;
+            continue;
+        }
+        if(session == "us")
+        {
+            int s = BollMR_BeijingToServerHour(us_start);
+            int e = BollMR_BeijingToServerHour(us_end);
+            if(BollMR_InWindow(server_hour, s, e))
+                return true;
+            continue;
+        }
+        if(session == "overlap")
+        {
+            int s = BollMR_BeijingToServerHour(ov_start);
+            int e = BollMR_BeijingToServerHour(ov_end);
+            if(BollMR_InWindow(server_hour, s, e))
+                return true;
+            continue;
+        }
+        if(session == "europe+us" || session == "eu+us")
+        {
+            int es = BollMR_BeijingToServerHour(eu_start);
+            int ee = BollMR_BeijingToServerHour(eu_end);
+            int us = BollMR_BeijingToServerHour(us_start);
+            int ue = BollMR_BeijingToServerHour(us_end);
+            if(BollMR_InWindow(server_hour, es, ee) ||
+               BollMR_InWindow(server_hour, us, ue))
+                return true;
+            continue;
+        }
+    }
+
+    // 如果 session 模式且未匹配任何有效标签，则直接放行
+    if(!matched_any)
+        return true;
+
+    // 未命中任何时段
+    return false;
 }
 
 #endif // __TIMEFILTER_BOLLMR_MQH__

@@ -18,7 +18,7 @@ input double BollMR_RSIOversold   = 30.0; // RSI 超卖阈值（做多过滤）
 
 input group "BollMR.TimeFilter"
 input string BollMR_TimeMode = "session"; // session / custom
-input string BollMR_Session  = "overlap"; // asia / europe / us / overlap / europe+us
+input string BollMR_Session  = "overlap"; // 支持逗号分隔：asia, europe, us, overlap, europe+us
 input int    BollMR_ServerUTCOffset = 2;  // MT5 服务器 UTC 偏移（小时）
 input bool   BollMR_UseDST = false;       // 手动夏令时开关（欧/美盘 +1 小时）
 input int    BollMR_DSTShiftHours = 1;    // DST 平移小时数
