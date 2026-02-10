@@ -46,6 +46,112 @@
 
 说明：`enhanced` 为历史增强版，包含 MA 趋势过滤 + 时间过滤 + 分层退出，属于“组合优化层的实验变体”，用于对比与迭代，不作为 M1.a/b/c 的单变量基线。
 
+## XAUUSD 美盘爆发行情规范（设计稿）
+
+以下为“美盘爆发行情 EA”的落地规范，作为 MT5 / Python 回测的统一标准。
+
+### 顶层流程
+
+```
+OnNewBar(M5):
+    if !IsUSSession(): return
+    UpdateMarketFeatures()
+    if !DailyPermission(): return
+    regime = DetectRegime()
+    if regime == NO_TRADE: return
+    if !HasPosition(): TryProbeTrade(regime)
+    else: ManagePosition(regime)
+```
+
+### 时间与日内控制
+
+- `IsUSSession`: 美盘开盘后 30–120 分钟窗口内可交易  
+- `DailyPermission`:
+  - 当日最大结构行情次数（例如 1 次）
+  - 连续结构失败 ≥ 2 次 → 当日停止交易
+
+### 入场（Probe / Main / Add）
+
+**Probe（试错）**
+- 只在 A 类（RANGE_COMPRESSION / FAILED_BREAKOUT）触发  
+- 小仓位（0.2R）
+- SL = 0.3–0.5 ATR
+- Probe 永不加仓
+
+**Main（主攻）**
+- 不是“结构确认立刻切 Main”
+- 必须满足：结构确认 + 回撤失败
+
+**Add（加仓）**
+- 只允许“回撤失败后加仓”
+- 禁止浮盈加仓
+- 最小加仓间距限制（避免密集加仓）
+
+### BreakoutHold 工程定义
+
+BreakoutHold = “是否回到原区间内”
+- 在突破后 N 根 K 内，只要回到区间内 → 失败  
+- 未回到区间内 → Hold 成立
+
+> 不用“连续 N 根收盘在区间外”，避免错杀美盘爆发行情
+
+### 回撤失败定义（切 Main 的关键）
+
+回撤失败条件（工程版）：
+- 回撤深度 < 0.3 ATR  
+- 未回到区间内  
+- 回撤实体明显缩小（力度衰减）
+
+### 退出/止盈止损（可选）
+
+**止损**
+- Probe: 0.3–0.5 ATR
+- Main/Add: 结构破坏立即撤退
+
+**止盈 / 离场**
+- 大实体反向 K
+- ATR 急剧衰减
+- 美盘后半时间到
+
+> 可选择“无固定 TP”，以结构退出为主
+
+### 风控设定（可选但建议）
+
+- 当日最大结构交易次数（建议 1）
+- 连续结构失败次数上限（建议 2）
+- 单日最大亏损上限（建议 = 2R–3R）
+
+### Regime 分类器（规则版）
+
+**A 类：直接爆发型**
+- vol_compress < 0.6
+- bars_in_range > 25
+- breakout_body_size > 1.2 ATR
+- pullback_depth < 0.3 ATR
+
+**B 类：结构确认型**
+- 双顶/双底确认  
+- 趋势回撤失败（EMA50 slope + 多次回撤失败）
+
+**C 类：陷阱/放弃**
+- ATR spike 但无跟随
+- 区间扩大后迅速塌缩
+- 频繁假突破
+
+### 回测规划
+
+- 以 M5 为主，M15 验证
+- 拆分测试：A 类单独回测、B 类单独回测、组合回测
+- 记录关键输出：结构成功率、Probe→Main 转化率、加仓胜率
+- 输出最大回撤与极端日损失分布
+
+### 实盘注意事项
+
+- 严格遵守“当日一次行情”纪律
+- 避免新闻脉冲时段（非农/CPI）
+- 实盘日志必须输出：Regime、Probe/Main/Add、结构确认与否、撤退原因
+- 实盘前至少完成 1 个完整月的回测与复盘
+
 ## 项目结构
 
 - `/Core`：MQL5 核心模块（风控/执行/管理）
