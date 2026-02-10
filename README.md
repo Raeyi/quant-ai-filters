@@ -42,6 +42,7 @@
 - M1.a：`base`（BB + ATR 基线）
 - M1.b：`rsi`（BB + ATR + RSI 过滤）
 - M1.c：`time`（BB + ATR + 时间过滤）
+- M1.d：`rsi_time`（BB + ATR + RSI + 时间过滤）
 
 说明：`enhanced` 为历史增强版，包含 MA 趋势过滤 + 时间过滤 + 分层退出，属于“组合优化层的实验变体”，用于对比与迭代，不作为 M1.a/b/c 的单变量基线。
 
@@ -73,6 +74,7 @@
 - `BollMRVariant = "base"`：启用基线版（纯 BB + ATR）
 - `BollMRVariant = "rsi"`：启用 RSI 过滤版（BB + ATR + RSI）
 - `BollMRVariant = "time"`：启用时间过滤版（BB + ATR + 时间窗口）
+- `BollMRVariant = "rsi_time"`：启用 RSI + 时间过滤版（BB + ATR + RSI + 时间窗口）
 - `BollMRVariant = "enhanced"`：启用增强版（含时间/趋势/分层退出）
 
 #### 时间过滤配置（北京时间 → 自动换算 MT5 服务器时间）
