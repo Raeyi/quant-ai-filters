@@ -20,8 +20,9 @@
 // 策略 & 管理
 #include "Core/Strategy.mqh"
 #include "Core/StrategyManager.mqh"
-#include "Strategies/Strategy_BollMR.mqh"
+#include "Strategies/Strategy_BollMR_enhanced.mqh"
 #include "Strategies/Strategy_BollMR_Base.mqh"
+#include "Strategies/Strategy_BollMR_RSI.mqh"
 
 // 执行 & 风控
 #include "Core/TradeExecutor.mqh"
@@ -43,6 +44,7 @@
 StrategyManager     manager; // 策略管理器
 Strategy_BollMR     boll_enhanced; // Bollinger 均值回归策略（增强版）
 Strategy_BollMR_Base boll_base;    // Bollinger 均值回归策略（基线版）
+Strategy_BollMR_RSI  boll_rsi;     // Bollinger 均值回归策略（RSI 过滤）
 
 TradeExecutor       executor; // 交易执行器
 RiskPipeline        risk_pipeline; // 风控管道
@@ -76,7 +78,7 @@ input bool AlertOnOrderFail  = true;   // 下单/平仓失败提示
 input int  GapCooldownBars = 5;        // 发现停盘缺口后跳过的bar数量
 
 //---------------- BollMR 版本 ----------------
-input string BollMRVariant = "enhanced"; // base / enhanced
+input string BollMRVariant = "enhanced"; // base / rsi / enhanced（选择策略变体）
 
 //---------------- 运行时状态 ----------------
 bool g_period_valid = true;
@@ -85,7 +87,7 @@ datetime g_suppress_chart_event_until = 0;
 string g_template_key = "";
 datetime g_last_bar_time = 0;
 int g_gap_skip_bars_remaining = 0;
-bool g_use_boll_base = false;
+string g_boll_variant = "";
 
 // 指标导出文件句柄（如果需要导出 features）
 int g_file = INVALID_HANDLE;
@@ -112,7 +114,7 @@ void UpdateStatusPanel()
    string reason = "";
    if(ea_disabled)
       reason = "TF " + EnumToString((ENUM_TIMEFRAMES)_Period) + " != " + EnumToString(TargetTimeframe);
-   bool time_allowed = g_use_boll_base ? true : boll_enhanced.TimeFilterOK();
+   bool time_allowed = (g_boll_variant == "enhanced") ? boll_enhanced.TimeFilterOK() : true;
    string time_reason = "";
    if(!time_allowed)
       time_reason = "交易时间限制";
@@ -166,19 +168,39 @@ int OnInit()
    EventSetTimer(1); // 每秒刷新面板时间显示
 
    // 1. 策略管理器：挂上 Bollinger 策略
-   string variant = BollMRVariant;
-   StringToLower(variant);
-   g_use_boll_base = (variant == "base");
-   if(g_use_boll_base)
+   g_boll_variant = BollMRVariant;
+   StringToLower(g_boll_variant);
+   if(g_boll_variant == "base")
       manager.Add(&boll_base);
+   else if(g_boll_variant == "rsi")
+      manager.Add(&boll_rsi);
    else
       manager.Add(&boll_enhanced);
 
    // 2. 初始化策略
-    if(g_use_boll_base ? !boll_base.Init() : !boll_enhanced.Init())
+    if(g_boll_variant == "base")
     {
-        Print("Failed to initialize BollMR strategy");
-        return INIT_FAILED;
+        if(!boll_base.Init())
+        {
+            Print("Failed to initialize BollMR base strategy");
+            return INIT_FAILED;
+        }
+    }
+    else if(g_boll_variant == "rsi")
+    {
+        if(!boll_rsi.Init())
+        {
+            Print("Failed to initialize BollMR RSI strategy");
+            return INIT_FAILED;
+        }
+    }
+    else
+    {
+        if(!boll_enhanced.Init())
+        {
+            Print("Failed to initialize BollMR enhanced strategy");
+            return INIT_FAILED;
+        }
     }
    // 3. 风控管道初始化
    risk_pipeline.Init();
@@ -257,9 +279,20 @@ void OnTick()
    }
 
    // 指标数据更新
-   if(g_use_boll_base ? !boll_base.UpdateIndicators() : !boll_enhanced.UpdateIndicators())
+   if(g_boll_variant == "base")
    {
-      return;
+      if(!boll_base.UpdateIndicators())
+         return;
+   }
+   else if(g_boll_variant == "rsi")
+   {
+      if(!boll_rsi.UpdateIndicators())
+         return;
+   }
+   else
+   {
+      if(!boll_enhanced.UpdateIndicators())
+         return;
    }
 
    // 指标调试输出（可选）

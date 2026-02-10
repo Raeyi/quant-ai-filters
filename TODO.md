@@ -26,10 +26,13 @@
 
 ## 里程碑 M1: Mean Reversion Family
 
-- [ ] 策略族拆分（Mean Reversion Family）
+- [x] 策略族拆分（Mean Reversion Family）
 - [x] M1.a BB+ATR（基础回归）
-- [ ] M1.b BB+RSI（动能过滤）
+- [x] M1.b BB+RSI（动能过滤）
 - [ ] M1.c BB+时间过滤（伦敦/美盘窗口）
+- [ ] M1.d 组合过滤（RSI + 时间窗口）
+- [ ] M1.e 参数敏感性与小规模优化（BB/ATR/RSI/时间窗）
+- [ ] M1.x Enhanced（BB+ATR+MA+Time+分层退出）作为实验对照组
 - [ ] 提供一份第三方 CSV 样例（列名/时间格式）用于解析验证
 - [ ] 增加 Dukascopy/TrueFX 下载与清洗模块
 
@@ -54,5 +57,6 @@
 - [ ] M4.a 不同 Regime 下胜率/回撤/收益
 - [ ] M4.b 策略间相关性矩阵
 - [ ] M4.c 连续亏损分布
+- [ ] M4.d 参数批量回测与对比（网格/随机）
 - [ ] 实现 AI 过滤器流水线（训练/推理）并接入信号流程
 - [ ] 增加命令行 `--profile` 支持（可选）

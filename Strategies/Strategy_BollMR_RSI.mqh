@@ -1,15 +1,16 @@
-#ifndef __STRATEGY_BOLL_MR_BASE_MQH__
-#define __STRATEGY_BOLL_MR_BASE_MQH__
+#ifndef __STRATEGY_BOLL_MR_RSI_MQH__
+#define __STRATEGY_BOLL_MR_RSI_MQH__
 
 #include "../Indicators/Bollinger.mqh"
 #include "../Indicators/ATR.mqh"
+#include "../Indicators/RSI.mqh"
 #include "../Core/Strategy.mqh"
 #include "../Core/Inputs_BollMR.mqh"
 
-class Strategy_BollMR_Base : public IStrategy
+class Strategy_BollMR_RSI : public IStrategy
 {
 public:
-    // 初始化指标（Bollinger/ATR）
+    // 初始化指标（Bollinger/ATR/RSI）
     bool Init()
     {
         if(!InitBollinger(BollMR_BollPeriod, BollMR_BollDev))
@@ -17,17 +18,21 @@ public:
             Print("[" + Name() + "] Failed to initialize Bollinger");
             return false;
         }
-
         if(!InitATR(BollMR_ATRPeriod))
         {
             Print("[" + Name() + "] Failed to initialize ATR");
+            return false;
+        }
+        if(!InitRSI(BollMR_RSIPeriod))
+        {
+            Print("[" + Name() + "] Failed to initialize RSI");
             return false;
         }
 
         Print("[" + Name() + "] indicators initialized successfully");
         return true;
     }
-    
+
     // 更新指标缓存数据
     bool UpdateIndicators()
     {
@@ -36,13 +41,16 @@ public:
             Print("[" + Name() + "] Failed to update Bollinger");
             return false;
         }
-
         if(!UpdateATR(50))
         {
             Print("[" + Name() + "] Failed to update ATR");
             return false;
         }
-
+        if(!UpdateRSI(50))
+        {
+            Print("[" + Name() + "] Failed to update RSI");
+            return false;
+        }
         return true;
     }
 
@@ -53,7 +61,7 @@ public:
         bool shortSig = ShortSignal();
         bool exitSig  = HasExitSignal();
 
-        if(!PositionSelect(_Symbol)) // 无持仓
+        if(!PositionSelect(_Symbol))
         {
             if(longSig)
             {
@@ -88,28 +96,38 @@ public:
     // 策略名称（用于日志/统计）
     string Name() override
     {
-        return "Bollinger_MeanReversion_Base";
+        return "Bollinger_MeanReversion_RSI";
     }
 
 public:
-    // 多头入场：BB 回归形态 + 波动过滤
+    // 多头入场：RSI 超卖 + BB 回归形态 + 波动过滤
     bool LongSignal()
     {
         if(!VolatilityOK())
             return false;
 
-        return (CloseAt(2) < GetBollLower(2) &&
+        double rsi = GetRSI(1); // 已收盘 RSI
+        if(rsi <= 0.0)
+            return false;
+
+        return (rsi <= BollMR_RSIOversold &&
+                CloseAt(2) < GetBollLower(2) &&
                 CloseAt(1) > GetBollLower(1) &&
                 CloseAt(1) <= GetBollMiddle(1));
     }
 
-    // 空头入场：BB 回归形态 + 波动过滤
+    // 空头入场：RSI 超买 + BB 回归形态 + 波动过滤
     bool ShortSignal()
     {
         if(!VolatilityOK())
             return false;
 
-        return (CloseAt(2) > GetBollUpper(2) &&
+        double rsi = GetRSI(1);
+        if(rsi <= 0.0)
+            return false;
+
+        return (rsi >= BollMR_RSIOverbought &&
+                CloseAt(2) > GetBollUpper(2) &&
                 CloseAt(1) < GetBollUpper(1) &&
                 CloseAt(1) >= GetBollMiddle(1));
     }
@@ -127,7 +145,7 @@ public:
         if(type == SIGNAL_EXIT)
             return;
 
-        double atr = GetATR(1); // 上一根已收盘 ATR
+        double atr = GetATR(1);
         double sl  = 0.0;
         CalcSL((type == SIGNAL_BUY) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL,
                s.price, atr, sl);
@@ -169,8 +187,7 @@ public:
         return false;
     }
 
-    //--------------------------------------------------
-    // 计算结构止损价格
+    // 结构止损：参考布林带上下轨 + ATR
     double CalcStructureSL(ENUM_ORDER_TYPE type, double atr)
     {
         if(type == ORDER_TYPE_BUY)
@@ -179,8 +196,7 @@ public:
             return GetBollUpper(1) + atr * BollMR_StructATRSL;
     }
 
-    //--------------------------------------------------
-    // 计算波动止损价格
+    // 波动止损：以 ATR 倍数给出止损
     double CalcVolatilitySL(ENUM_ORDER_TYPE type, double entry, double atr)
     {
         if(type == ORDER_TYPE_BUY)
@@ -189,8 +205,7 @@ public:
             return entry + atr * BollMR_VolATRSL;
     }
 
-    //--------------------------------------------------
-    // 计算止损价格
+    // 计算最终止损（结构止损与波动止损取更宽者）
     void CalcSL(ENUM_ORDER_TYPE type, double entry, double atr, double &sl)
     {
         double min_dist = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
@@ -212,4 +227,4 @@ public:
     }
 };
 
-#endif // __STRATEGY_BOLL_MR_BASE_MQH__
+#endif // __STRATEGY_BOLL_MR_RSI_MQH__

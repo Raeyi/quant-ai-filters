@@ -1,6 +1,6 @@
 ﻿# quant-ai-filters
 
-**AI 过滤型量化多策略交易系统（Hybrid MQL5 + Python）**
+## AI 过滤型量化多策略交易系统（Hybrid MQL5 + Python）
 
 这是一个专注于 XAUUSD（黄金）量化交易的个人项目，目标是构建稳定盈利的多策略组合系统，并逐步引入 AI/ML 过滤信号与风控。
 
@@ -29,6 +29,22 @@
 - M4.b 策略间相关性矩阵
 - M4.c 连续亏损分布
 
+## 策略族设计说明
+
+### 分层关系
+
+- 基础因子层：定义最小可运行策略基线（如 BB + ATR）
+- 组合优化层：在基线之上叠加单一过滤器（如 RSI、时间窗口），便于对比增益
+- 风控层：与策略解耦的统一风险控制（仓位、止损、冷却、连亏暂停）
+
+### M1 版本映射
+
+- M1.a：`base`（BB + ATR 基线）
+- M1.b：`rsi`（BB + ATR + RSI 过滤）
+- M1.c：`base` + 时间窗口过滤（待实现）
+
+说明：`enhanced` 为历史增强版，包含 MA 趋势过滤 + 时间过滤 + 分层退出，属于“组合优化层的实验变体”，用于对比与迭代，不作为 M1.a/b/c 的单变量基线。
+
 ## 项目结构
 
 - `/Core`：MQL5 核心模块（风控/执行/管理）
@@ -55,6 +71,7 @@
 在 EA 参数中设置：
 
 - `BollMRVariant = "base"`：启用基线版（纯 BB + ATR）
+- `BollMRVariant = "rsi"`：启用 RSI 过滤版（BB + ATR + RSI）
 - `BollMRVariant = "enhanced"`：启用增强版（含时间/趋势/分层退出）
 
 ### Python 部分（回测与研究）
@@ -73,12 +90,12 @@ python backtest.py --help
    - `active_profile` 选择 `backtest` 或 `live`
    - `paths.mt5_root`：MT5 导出数据的根目录
    - `paths.mt5_common_root`：MT5 Common/Files 根目录（features/signals 导出）
-- `paths.third_party_root`：第三方数据根目录（Dukascopy/TrueFX）
-- `paths.data_root`：Python 相对路径的默认根目录
-- `strategy.boll_mr`：回测策略参数（需与 MT5 输入一致）
-- `broker.initial_cash`：回测初始资金（建议与 MT5 回测入金一致）
-- `broker.leverage`：回测杠杆（用于保证金约束，建议与 MT5 一致）
-- `broker.trade_lot`：回测每次下单手数（默认 0.01；用于保证金与收益缩放）
+   - `paths.third_party_root`：第三方数据根目录（Dukascopy/TrueFX）
+   - `paths.data_root`：Python 相对路径的默认根目录
+   - `strategy.boll_mr`：回测策略参数（需与 MT5 输入一致）
+   - `broker.initial_cash`：回测初始资金（建议与 MT5 回测入金一致）
+   - `broker.leverage`：回测杠杆（用于保证金约束，建议与 MT5 一致）
+   - `broker.trade_lot`：回测每次下单手数（默认 0.01；用于保证金与收益缩放）
 2. 准备数据：
    - MT5 导出（K 线 OHLC）使用 `--source mt5`
    - 第三方 OHLC 使用 `--source dukascopy` 或 `--source truefx`
@@ -93,6 +110,7 @@ python backtest.py --help
    - `--export-signals Python/data/signals.csv`
 
 备注：
+
 - 如果使用 Tick 数据，必须传 `--resample`（如 `1T`、`5T`、`15T`）。
 - 策略逻辑正在与 MQL5 的 BollMR 对齐（近期 MQL5 侧已更新：入场用已收盘K线、回归中轨过滤、缺口冷却、Bollinger 缓冲对齐）。
 
@@ -104,6 +122,7 @@ python backtest.py --help
 ### 获取方式（MT5）
 
 新版 MT5 没有 “历史数据中心” 菜单时，推荐这样导出：
+
 1. 按 `Ctrl+U` 打开 **品种(Symbols)** 窗口
 2. 选择品种（如 `XAUUSD`）
 3. 切换到 **Bars**（K 线）标签页
@@ -125,17 +144,14 @@ python backtest.py --help
 
 启动本地 Web 面板：
 
-```
 scripts\start_web_ui.cmd
-```
 
 浏览器打开：
 
-```
-http://127.0.0.1:8787
-```
+<http://127.0.0.1:8787>
 
 在网页上你可以：
+
 - 修改 `config.json`（路径/成本/策略参数）
 - 一键导入 MT5 `.set` 参数文件
 - 上传 CSV 并一键运行
@@ -164,41 +180,30 @@ http://127.0.0.1:8787
 
 在 Windows 终端执行：
 
-```
 scripts\run_pipeline.cmd -Data XAUUSD_M5_202409050345_202602062350.csv -Source mt5 -Symbol XAUUSD -Timeframe M5
-```
 
 可选参数示例：
 
-```
 scripts\run_pipeline.cmd -Data XAUUSD_M5_202409050345_202602062350.csv -Source mt5 -Symbol XAUUSD -Timeframe M5 -OutDir data -LabelShift 1 -Filter identity
-```
 
 如果有 MT5 导出的信号文件（`signals_mt5.csv`），可以加：
 
-```
 scripts\run_pipeline.cmd -Data XAUUSD_M5_202409050345_202602062350.csv -Source mt5 -Symbol XAUUSD -Timeframe M5 -Mt5Signals data/signals_mt5.csv
-```
 
 自动选取最新 CSV 并自动切换 profile：
 
-```
 scripts\run_pipeline.cmd -AutoProfile -DataPattern *.csv -Source mt5 -Symbol XAUUSD -Timeframe M5
-```
 
 手动切换 profile：
 
-```
 scripts\run_pipeline.cmd -Profile backtest -Data XAUUSD_M5_202409050345_202602062350.csv -Source mt5 -Symbol XAUUSD -Timeframe M5
-```
 
 策略参数对齐（与 MT5 输入一致）：
 
-```
 scripts\run_pipeline.cmd -Data XAUUSD_M5_202409050345_202602062350.csv -Source mt5 -Symbol XAUUSD -Timeframe M5 -EntryMode A -StartHour 20 -EndHour 14 -BollPeriod 18 -BollDev 1.8 -AtrPeriod 14 -ShortestClosingTime 10 -StructAtrSl 0.8 -VolAtrSl 2.0 -MidAtrTp 0.2 -UplowAtrTp 0.1 -MaPeriod 50
-```
 
 说明：
+
 - `run_pipeline.cmd` 是 Windows 的快捷入口，它会调用 `run_pipeline.ps1`
 - 脚本会依次执行：回测 -> 导出 features/signals -> 构建训练集 ->（可选）信号对齐对比
 - 如果不传策略参数，脚本会使用 `config.json` 里的 `strategy.boll_mr` 默认值

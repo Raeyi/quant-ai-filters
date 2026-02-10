@@ -1,30 +1,11 @@
-﻿#ifndef __STRATEGY_BOLL_MR_MQH__
-#define __STRATEGY_BOLL_MR_MQH__
+﻿#ifndef __STRATEGY_BOLL_MR_ENHANCED_MQH__
+#define __STRATEGY_BOLL_MR_ENHANCED_MQH__
 
 #include "../Indicators/Bollinger.mqh"
 #include "../Indicators/ATR.mqh"
 #include "../Indicators/MA.mqh"
 #include "../Core/Strategy.mqh"
-
-// 交易时间过滤参数(美盘不参与交易)
-input int boll_Allowed_transaction_start_time = 2;  // 交易开始时间（小时）
-input int boll_Allowed_transaction_end_time   = 20; // 交易结束时间（小时）
-
-input int    BollPeriod       = 20;   // 布林带周期
-input double BollDev          = 2.0;  // 布林带标准差
-input int    ATRPeriod        = 14;   // ATR 周期
-input int ShortestClosingTime = 10; // 最短持仓时间，防止刚开仓立刻被平掉（秒）
-input double    StructATRSL        = 0.8;   // 结构止损 ATR 倍数
-input double    VolATRSL          = 2.0;  // 波动止损 ATR
-input double    BoolMidATRTP         = 0.2;  // 均值回归止盈 ATR 倍数
-
-input double    BoolMidATRTP2        = 0.5;  // 均值回归止盈2 ATR 倍数
-input double    BoolPartialExit1     = 0.5;  // 第一层部分平仓比例
-input double    BoolPartialExit2     = 0.25; // 第二层部分平仓比例
-input double    BoolUplowATRTP         = 0.1;  //  上轨/下轨止盈 ATR 倍数
-input int    MAPeriod = 50;              // MA周期
-input string boll_entry_mode = "A"; // 入场模式：A / B / C
-input bool   boll_LogSignalDetails = true; // 仅在信号生成时打印关键信息
+#include "../Core/Inputs_BollMR.mqh"
 
 class Strategy_BollMR : public IStrategy
 {
@@ -37,19 +18,19 @@ public:
     bool Init()
     {
         // 指标初始化
-        if(!InitBollinger(BollPeriod, BollDev))
+        if(!InitBollinger(BollMR_BollPeriod, BollMR_BollDev))
             {
                 Print("[" + Name() + "] Failed to initialize Bollinger indicator");
                 return false;
             }
 
-        if(!InitATR(ATRPeriod))
+        if(!InitATR(BollMR_ATRPeriod))
         {
             Print("[" + Name() + "] Failed to initialize ATR indicator");
             return false;
         }
 
-        if(!InitMA(MAPeriod))
+        if(!InitMA(BollMR_MAPeriod))
         {
             Print("[" + Name() + "] Failed to initialize EMA indicator");
             return false;
@@ -99,8 +80,8 @@ public:
 
     Signal GenerateSignal(Signal &signal) override
     {
-        bool longSig  = LongSignal(boll_entry_mode);
-        bool shortSig = ShortSignal(boll_entry_mode);
+        bool longSig  = LongSignal(BollMR_EntryMode);
+        bool shortSig = ShortSignal(BollMR_EntryMode);
         double exit_volume = 0.0;
         bool exitSig = HasExitSignal(exit_volume);
 
@@ -108,7 +89,7 @@ public:
         {   
             if(longSig)
             {
-                LogSignalDetails("BUY", boll_entry_mode);
+                LogSignalDetails("BUY", BollMR_EntryMode);
                 FillSignal(signal, SIGNAL_BUY);
 
                 Print("[BollMR] Long signal filled. price=", signal.price,
@@ -118,7 +99,7 @@ public:
             }
             if(shortSig)
             {
-                LogSignalDetails("SELL", boll_entry_mode);
+                LogSignalDetails("SELL", BollMR_EntryMode);
                 FillSignal(signal, SIGNAL_SELL);
                 Print("[BollMR] Short signal filled. price=", signal.price,
                     " sl=", signal.sl, " tp=", signal.tp);
@@ -375,7 +356,7 @@ public:
 
     void LogSignalDetails(const string direction, const string mode)
     {
-        if(!boll_LogSignalDetails)
+        if(!BollMR_LogSignalDetails)
             return;
 
         int h = 0;
@@ -462,17 +443,17 @@ public:
         int hour = timeStruct.hour;
         // Print("[BollMR] Current server hour (UTC+?): ", hour); // 更新注释提醒
         // 处理通常情况 (例如 8:00 - 22:00)
-        if(boll_Allowed_transaction_start_time <= boll_Allowed_transaction_end_time)
+        if(BollMR_StartHour <= BollMR_EndHour)
         {
             // 时段在同一天内
-            if(hour < boll_Allowed_transaction_start_time || hour >= boll_Allowed_transaction_end_time)
+            if(hour < BollMR_StartHour || hour >= BollMR_EndHour)
                 return false;
         }
         else
         {
             // 时段跨午夜 (例如 22:00 - 次日 4:00)
             // 此时，如果 hour 小于开始时间 且 大于等于结束时间，才返回 false
-            if(hour < boll_Allowed_transaction_start_time && hour >= boll_Allowed_transaction_end_time)
+            if(hour < BollMR_StartHour && hour >= BollMR_EndHour)
                 return false;
         }
         // Print("[BollMR] Time filter passed. Current hour: ", hour);
@@ -484,9 +465,9 @@ public:
     double CalcStructureSL(ENUM_ORDER_TYPE type, double atr)
     {
         if(type == ORDER_TYPE_BUY)
-            return GetBollLower(1) - atr * StructATRSL;
+            return GetBollLower(1) - atr * BollMR_StructATRSL;
         else
-            return GetBollUpper(1) + atr * StructATRSL;
+            return GetBollUpper(1) + atr * BollMR_StructATRSL;
     }
 
     //--------------------------------------------------
@@ -494,9 +475,9 @@ public:
     double CalcVolatilitySL(ENUM_ORDER_TYPE type, double entry, double atr)
     {
         if(type == ORDER_TYPE_BUY)
-            return entry - atr * VolATRSL;
+            return entry - atr * BollMR_VolATRSL;
         else
-            return entry + atr * VolATRSL;
+            return entry + atr * BollMR_VolATRSL;
     }
 
     //--------------------------------------------------
@@ -562,7 +543,7 @@ public:
         datetime open_time =
             (datetime)PositionGetInteger(POSITION_TIME);
 
-        if(TimeCurrent() - open_time < ShortestClosingTime)
+        if(TimeCurrent() - open_time < BollMR_ShortestClosingTime)
             return false;
 
         ENUM_POSITION_TYPE type =
@@ -583,19 +564,19 @@ public:
                     return true;
                 }
 
-                double level1 = middle_ref + atr * BoolMidATRTP;
-                double level2 = middle_ref + atr * BoolMidATRTP2;
+                double level1 = middle_ref + atr * BollMR_MidATRTP;
+                double level2 = middle_ref + atr * BollMR_MidATRTP2;
 
                 if(exit_stage == 0 && bid_now >= level1)
                 {
-                    exit_volume = exit_entry_volume * BoolPartialExit1;
+                    exit_volume = exit_entry_volume * BollMR_PartialExit1;
                     exit_stage = 1;
                     return true;
                 }
 
                 if(exit_stage == 1 && bid_now >= level2)
                 {
-                    exit_volume = exit_entry_volume * BoolPartialExit2;
+                    exit_volume = exit_entry_volume * BollMR_PartialExit2;
                     exit_stage = 2;
                     return true;
                 }
@@ -618,19 +599,19 @@ public:
                     return true;
                 }
 
-                double level1 = middle_ref - atr * BoolMidATRTP;
-                double level2 = middle_ref - atr * BoolMidATRTP2;
+                double level1 = middle_ref - atr * BollMR_MidATRTP;
+                double level2 = middle_ref - atr * BollMR_MidATRTP2;
 
                 if(exit_stage == 0 && bid_now <= level1)
                 {
-                    exit_volume = exit_entry_volume * BoolPartialExit1;
+                    exit_volume = exit_entry_volume * BollMR_PartialExit1;
                     exit_stage = 1;
                     return true;
                 }
 
                 if(exit_stage == 1 && bid_now <= level2)
                 {
-                    exit_volume = exit_entry_volume * BoolPartialExit2;
+                    exit_volume = exit_entry_volume * BollMR_PartialExit2;
                     exit_stage = 2;
                     return true;
                 }
@@ -646,7 +627,10 @@ public:
     }
 };
 
-#endif // __STRATEGY_BOLL_MR_MQH__
+#endif // __STRATEGY_BOLL_MR_ENHANCED_MQH__
+
+
+
 
 
 
