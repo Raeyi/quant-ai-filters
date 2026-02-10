@@ -16,9 +16,16 @@ input int    BollMR_RSIPeriod     = 14;   // RSI 周期
 input double BollMR_RSIOverbought = 70.0; // RSI 超买阈值（做空过滤）
 input double BollMR_RSIOversold   = 30.0; // RSI 超卖阈值（做多过滤）
 
+input group "BollMR.TimeFilter"
+input string BollMR_TimeMode = "session"; // session / custom
+input string BollMR_Session  = "overlap"; // asia / europe / us / overlap / europe+us
+input int    BollMR_ServerUTCOffset = 2;  // MT5 服务器 UTC 偏移（小时）
+input bool   BollMR_UseDST = false;       // 手动夏令时开关（欧/美盘 +1 小时）
+input int    BollMR_DSTShiftHours = 1;    // DST 平移小时数
+input int    BollMR_StartHour = 8;        // 自定义开始时间（北京时间）
+input int    BollMR_EndHour   = 16;       // 自定义结束时间（北京时间）
+
 input group "BollMR.Enhanced"
-input int    BollMR_StartHour          = 2;    // 交易开始时间（小时）
-input int    BollMR_EndHour            = 20;   // 交易结束时间（小时）
 input int    BollMR_ShortestClosingTime = 10;  // 最短持仓时间（秒）
 input double BollMR_MidATRTP           = 0.2;  // 中轨止盈 ATR 倍数
 input double BollMR_MidATRTP2          = 0.5;  // 中轨止盈2 ATR 倍数

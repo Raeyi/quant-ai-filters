@@ -6,6 +6,7 @@
 #include "../Indicators/MA.mqh"
 #include "../Core/Strategy.mqh"
 #include "../Core/Inputs_BollMR.mqh"
+#include "../Core/TimeFilter_BollMR.mqh"
 
 class Strategy_BollMR : public IStrategy
 {
@@ -437,27 +438,7 @@ public:
 
     bool TimeFilterOK()
     {
-        datetime currentTime = TimeCurrent();
-        MqlDateTime timeStruct;
-        TimeToStruct(currentTime, timeStruct);
-        int hour = timeStruct.hour;
-        // Print("[BollMR] Current server hour (UTC+?): ", hour); // 更新注释提醒
-        // 处理通常情况 (例如 8:00 - 22:00)
-        if(BollMR_StartHour <= BollMR_EndHour)
-        {
-            // 时段在同一天内
-            if(hour < BollMR_StartHour || hour >= BollMR_EndHour)
-                return false;
-        }
-        else
-        {
-            // 时段跨午夜 (例如 22:00 - 次日 4:00)
-            // 此时，如果 hour 小于开始时间 且 大于等于结束时间，才返回 false
-            if(hour < BollMR_StartHour && hour >= BollMR_EndHour)
-                return false;
-        }
-        // Print("[BollMR] Time filter passed. Current hour: ", hour);
-        return true;
+        return BollMR_TimeFilterOK();
     }
 
     //--------------------------------------------------

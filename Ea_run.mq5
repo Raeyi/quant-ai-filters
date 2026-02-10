@@ -23,6 +23,7 @@
 #include "Strategies/Strategy_BollMR_enhanced.mqh"
 #include "Strategies/Strategy_BollMR_Base.mqh"
 #include "Strategies/Strategy_BollMR_RSI.mqh"
+#include "Strategies/Strategy_BollMR_Time.mqh"
 
 // 执行 & 风控
 #include "Core/TradeExecutor.mqh"
@@ -45,6 +46,7 @@ StrategyManager     manager; // 策略管理器
 Strategy_BollMR     boll_enhanced; // Bollinger 均值回归策略（增强版）
 Strategy_BollMR_Base boll_base;    // Bollinger 均值回归策略（基线版）
 Strategy_BollMR_RSI  boll_rsi;     // Bollinger 均值回归策略（RSI 过滤）
+Strategy_BollMR_Time boll_time;    // Bollinger 均值回归策略（时间过滤）
 
 TradeExecutor       executor; // 交易执行器
 RiskPipeline        risk_pipeline; // 风控管道
@@ -78,7 +80,7 @@ input bool AlertOnOrderFail  = true;   // 下单/平仓失败提示
 input int  GapCooldownBars = 5;        // 发现停盘缺口后跳过的bar数量
 
 //---------------- BollMR 版本 ----------------
-input string BollMRVariant = "enhanced"; // base / rsi / enhanced（选择策略变体）
+input string BollMRVariant = "enhanced"; // base / rsi / time / enhanced（选择策略变体）
 
 //---------------- 运行时状态 ----------------
 bool g_period_valid = true;
@@ -114,7 +116,11 @@ void UpdateStatusPanel()
    string reason = "";
    if(ea_disabled)
       reason = "TF " + EnumToString((ENUM_TIMEFRAMES)_Period) + " != " + EnumToString(TargetTimeframe);
-   bool time_allowed = (g_boll_variant == "enhanced") ? boll_enhanced.TimeFilterOK() : true;
+   bool time_allowed = true;
+   if(g_boll_variant == "enhanced")
+      time_allowed = boll_enhanced.TimeFilterOK();
+   else if(g_boll_variant == "time")
+      time_allowed = boll_time.TimeFilterOK();
    string time_reason = "";
    if(!time_allowed)
       time_reason = "交易时间限制";
@@ -174,6 +180,8 @@ int OnInit()
       manager.Add(&boll_base);
    else if(g_boll_variant == "rsi")
       manager.Add(&boll_rsi);
+   else if(g_boll_variant == "time")
+      manager.Add(&boll_time);
    else
       manager.Add(&boll_enhanced);
 
@@ -191,6 +199,14 @@ int OnInit()
         if(!boll_rsi.Init())
         {
             Print("Failed to initialize BollMR RSI strategy");
+            return INIT_FAILED;
+        }
+    }
+    else if(g_boll_variant == "time")
+    {
+        if(!boll_time.Init())
+        {
+            Print("Failed to initialize BollMR time strategy");
             return INIT_FAILED;
         }
     }
@@ -287,6 +303,11 @@ void OnTick()
    else if(g_boll_variant == "rsi")
    {
       if(!boll_rsi.UpdateIndicators())
+         return;
+   }
+   else if(g_boll_variant == "time")
+   {
+      if(!boll_time.UpdateIndicators())
          return;
    }
    else

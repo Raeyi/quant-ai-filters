@@ -29,7 +29,7 @@
 - [x] 策略族拆分（Mean Reversion Family）
 - [x] M1.a BB+ATR（基础回归）
 - [x] M1.b BB+RSI（动能过滤）
-- [ ] M1.c BB+时间过滤（伦敦/美盘窗口）
+- [x] M1.c BB+时间过滤（伦敦/美盘窗口）
 - [ ] M1.d 组合过滤（RSI + 时间窗口）
 - [ ] M1.e 参数敏感性与小规模优化（BB/ATR/RSI/时间窗）
 - [ ] M1.x Enhanced（BB+ATR+MA+Time+分层退出）作为实验对照组

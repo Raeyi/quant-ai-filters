@@ -41,7 +41,7 @@
 
 - M1.a：`base`（BB + ATR 基线）
 - M1.b：`rsi`（BB + ATR + RSI 过滤）
-- M1.c：`base` + 时间窗口过滤（待实现）
+- M1.c：`time`（BB + ATR + 时间过滤）
 
 说明：`enhanced` 为历史增强版，包含 MA 趋势过滤 + 时间过滤 + 分层退出，属于“组合优化层的实验变体”，用于对比与迭代，不作为 M1.a/b/c 的单变量基线。
 
@@ -72,7 +72,29 @@
 
 - `BollMRVariant = "base"`：启用基线版（纯 BB + ATR）
 - `BollMRVariant = "rsi"`：启用 RSI 过滤版（BB + ATR + RSI）
+- `BollMRVariant = "time"`：启用时间过滤版（BB + ATR + 时间窗口）
 - `BollMRVariant = "enhanced"`：启用增强版（含时间/趋势/分层退出）
+
+#### 时间过滤配置（北京时间 → 自动换算 MT5 服务器时间）
+
+时间窗以 **北京时间（GMT+8）** 定义，EA 内部会自动换算为 MT5 服务器时间（默认 GMT+2）。
+
+**模式一：按盘面时段选择**
+- `BollMR_TimeMode = "session"`
+- `BollMR_Session = "asia" | "europe" | "us" | "overlap" | "europe+us"`
+
+**模式二：自定义时间段（北京时间）**
+- `BollMR_TimeMode = "custom"`
+- `BollMR_StartHour / BollMR_EndHour`（北京时间小时）
+
+**服务器时区与夏令时**
+- `BollMR_ServerUTCOffset = 2`（MT5 服务器 UTC 偏移，默认 GMT+2）
+- `BollMR_UseDST = true/false`（手动夏令时开关）
+- `BollMR_DSTShiftHours = 1`（DST 平移小时数，默认 +1）
+
+说明：
+- 开启 `BollMR_UseDST` 时，仅对 **欧盘/美盘/重叠时段** 平移 1 小时。
+- 自定义模式 `custom` 仍以北京时间填写。
 
 ### Python 部分（回测与研究）
 
