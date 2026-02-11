@@ -33,9 +33,10 @@ def _parse_grid(grid_text: str) -> Dict[str, List[str]]:
 
 
 def _coerce_value(key: str, value: str):
-    if key in {"boll_period", "atr_period", "ma_period", "start_hour", "end_hour", "max_holding_bars"}:
+    if key in {"boll_period", "atr_period", "ma_period", "start_hour", "end_hour", "max_holding_bars", "rsi_period"}:
         return int(value)
-    if key in {"boll_dev", "struct_atr_sl", "vol_atr_sl", "mid_atr_tp", "mid_atr_tp2", "uplow_atr_tp"}:
+    if key in {"boll_dev", "struct_atr_sl", "vol_atr_sl", "mid_atr_tp", "mid_atr_tp2", "uplow_atr_tp",
+               "atr_vol_limit", "rsi_overbought", "rsi_oversold"}:
         return float(value)
     return value
 
@@ -56,13 +57,18 @@ def _build_params(cfg_boll, overrides: Dict[str, object], point: float) -> BollM
         return overrides.get(name, default)
 
     return BollMeanReversionParams(
-        entry_mode=pick("entry_mode", cfg_boll.entry_mode),
         logic_mode=pick("logic_mode", getattr(cfg_boll, "logic_mode", "enhanced")),
+        entry_mode=pick("entry_mode", cfg_boll.entry_mode),
         allowed_start_hour=pick("start_hour", cfg_boll.allowed_start_hour),
         allowed_end_hour=pick("end_hour", cfg_boll.allowed_end_hour),
+        time_offset_hours=cfg_boll.time_offset_hours,
         boll_period=pick("boll_period", cfg_boll.boll_period),
         boll_dev=pick("boll_dev", cfg_boll.boll_dev),
         atr_period=pick("atr_period", cfg_boll.atr_period),
+        atr_vol_limit=pick("atr_vol_limit", getattr(cfg_boll, "atr_vol_limit", 1.5)),
+        rsi_period=pick("rsi_period", getattr(cfg_boll, "rsi_period", 14)),
+        rsi_overbought=pick("rsi_overbought", getattr(cfg_boll, "rsi_overbought", 70.0)),
+        rsi_oversold=pick("rsi_oversold", getattr(cfg_boll, "rsi_oversold", 30.0)),
         shortest_closing_time=cfg_boll.shortest_closing_time,
         struct_atr_sl=pick("struct_atr_sl", cfg_boll.struct_atr_sl),
         vol_atr_sl=pick("vol_atr_sl", cfg_boll.vol_atr_sl),
@@ -71,7 +77,6 @@ def _build_params(cfg_boll, overrides: Dict[str, object], point: float) -> BollM
         bool_uplow_atr_tp=pick("uplow_atr_tp", cfg_boll.uplow_atr_tp),
         ma_period=pick("ma_period", cfg_boll.ma_period),
         point=point,
-        time_offset_hours=cfg_boll.time_offset_hours,
         max_holding_bars=cfg_boll.max_holding_bars,
         max_daily_loss_percent=cfg_boll.max_daily_loss_percent,
         risk_percent=cfg_boll.risk_percent,
