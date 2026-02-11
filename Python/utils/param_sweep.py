@@ -33,7 +33,7 @@ def _parse_grid(grid_text: str) -> Dict[str, List[str]]:
 
 
 def _coerce_value(key: str, value: str):
-    if key in {"boll_period", "atr_period", "ma_period", "start_hour", "end_hour"}:
+    if key in {"boll_period", "atr_period", "ma_period", "start_hour", "end_hour", "max_holding_bars"}:
         return int(value)
     if key in {"boll_dev", "struct_atr_sl", "vol_atr_sl", "mid_atr_tp", "mid_atr_tp2", "uplow_atr_tp"}:
         return float(value)
@@ -57,6 +57,7 @@ def _build_params(cfg_boll, overrides: Dict[str, object], point: float) -> BollM
 
     return BollMeanReversionParams(
         entry_mode=pick("entry_mode", cfg_boll.entry_mode),
+        logic_mode=pick("logic_mode", getattr(cfg_boll, "logic_mode", "enhanced")),
         allowed_start_hour=pick("start_hour", cfg_boll.allowed_start_hour),
         allowed_end_hour=pick("end_hour", cfg_boll.allowed_end_hour),
         boll_period=pick("boll_period", cfg_boll.boll_period),
@@ -93,10 +94,17 @@ def main() -> None:
     parser.add_argument("--timeframe", required=True)
     parser.add_argument("--resample", default=None)
     parser.add_argument("--grid", default="")
+    parser.add_argument("--logic", default="enhanced", choices=["base", "enhanced"])
     parser.add_argument("--out", default="Python/data/param_sweep.csv")
     parser.add_argument("--top", type=int, default=0)
     parser.add_argument("--sort", default="total_return")
     parser.add_argument("--sort-secondary", default="sharpe")
+    parser.add_argument("--min-sharpe", type=float, default=None)
+    parser.add_argument("--min-trades", type=int, default=None)
+    parser.add_argument("--max-dd", type=float, default=None)
+    parser.add_argument("--min-profit-factor", type=float, default=None)
+    parser.add_argument("--min-ret-over-dd", type=float, default=None)
+    parser.add_argument("--bollmr-filter", action="store_true")
     parser.add_argument("--tz", default=None)
     args = parser.parse_args()
 
@@ -119,10 +127,12 @@ def main() -> None:
     )
 
     grid = _parse_grid(args.grid)
+    if "logic_mode" not in grid:
+        grid["logic_mode"] = [args.logic]
     results = []
 
     for source in sources:
-        data_path = resolve_data_path(settings.paths, args.data, source)
+        data_path = resolve_data_path(settings.paths, source, args.data)
         df, source_kind = load_data(str(data_path), source, tz=args.tz, resample_rule=args.resample)
         if args.resample and source_kind == "ohlc":
             df = resample_ohlc(df, args.resample)
@@ -137,19 +147,57 @@ def main() -> None:
             filtered.signals = _apply_risk_controls(df, filtered.signals, filtered.confidence, config, params)
 
             result = run_backtest(df, filtered.signals, config)
+            trades_df = result.trades
+            gross_profit = float(trades_df.loc[trades_df["pnl"] > 0, "pnl"].sum()) if not trades_df.empty else 0.0
+            gross_loss = float(trades_df.loc[trades_df["pnl"] < 0, "pnl"].sum()) if not trades_df.empty else 0.0
+            profit_factor = 0.0
+            if gross_loss < 0:
+                profit_factor = gross_profit / abs(gross_loss)
+            ret = float(result.stats.get("total_return", 0.0))
+            dd = float(result.stats.get("max_drawdown", 0.0))
+            ret_over_dd = ret / abs(dd) if dd < 0 else 0.0
+            ending_balance = float(result.equity.iloc[-1]) if not result.equity.empty else float(config.initial_cash)
+            win_rate = 0.0
+            if not trades_df.empty:
+                wins = int((trades_df["pnl"] > 0).sum())
+                win_rate = wins / len(trades_df)
+
             row = {
                 "source": source,
                 **overrides,
-                "total_return": result.stats.get("total_return", 0.0),
-                "max_drawdown": result.stats.get("max_drawdown", 0.0),
+                "total_return": ret,
+                "max_drawdown": dd,
                 "sharpe": result.stats.get("sharpe", 0.0),
                 "trades": result.stats.get("trades", 0),
+                "profit_factor": profit_factor,
+                "ret_over_dd": ret_over_dd,
+                "win_rate": win_rate,
+                "ending_balance": ending_balance,
             }
             results.append(row)
 
     out_path = Path(resolve_path(settings.paths.data_root, args.out))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df_out = pd.DataFrame(results)
+
+    if args.bollmr_filter:
+        # BollMR default screening thresholds (stable mean-reversion expectations)
+        args.min_sharpe = 1.0 if args.min_sharpe is None else args.min_sharpe
+        args.max_dd = 0.15 if args.max_dd is None else args.max_dd
+        args.min_trades = 80 if args.min_trades is None else args.min_trades
+        args.min_profit_factor = 1.2 if args.min_profit_factor is None else args.min_profit_factor
+
+    if args.min_sharpe is not None:
+        df_out = df_out[df_out["sharpe"] >= args.min_sharpe]
+    if args.min_trades is not None:
+        df_out = df_out[df_out["trades"] >= args.min_trades]
+    if args.max_dd is not None:
+        df_out = df_out[df_out["max_drawdown"] >= -abs(args.max_dd)]
+    if args.min_profit_factor is not None:
+        df_out = df_out[df_out["profit_factor"] >= args.min_profit_factor]
+    if args.min_ret_over_dd is not None:
+        df_out = df_out[df_out["ret_over_dd"] >= args.min_ret_over_dd]
+
     df_out.to_csv(out_path, index=False)
     print(f"[param_sweep] saved: {out_path}")
 
@@ -170,6 +218,16 @@ def main() -> None:
         top_path = out_path.with_name(out_path.stem + f"_top{args.top}" + out_path.suffix)
         top_df.to_csv(top_path, index=False)
         print(f"[param_sweep] saved: {top_path}")
+        preview_cols = [
+            c for c in [
+                "source", "entry_mode", "boll_period", "boll_dev", "ma_period",
+                "max_holding_bars", "total_return", "max_drawdown", "sharpe",
+                "trades", "win_rate", "profit_factor", "ret_over_dd", "ending_balance",
+            ] if c in top_df.columns
+        ]
+        if preview_cols:
+            print("[param_sweep] top preview:")
+            print(top_df[preview_cols].head(min(10, len(top_df))).to_string(index=False))
 
 
 if __name__ == "__main__":

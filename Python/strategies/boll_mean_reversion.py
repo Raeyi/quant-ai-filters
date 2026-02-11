@@ -25,6 +25,7 @@ class BollMeanReversionParams:
     bool_uplow_atr_tp: float = 0.1
     ma_period: int = 50
     entry_mode: str = "A"
+    logic_mode: str = "enhanced"  # "base" or "enhanced"
     point: float = 0.0001
     time_offset_hours: float = 0.0
     max_holding_bars: int = 0
@@ -263,6 +264,10 @@ class BollMeanReversionStrategy:
                 return a1 > a_mean * 1.4
 
             def long_signal() -> bool:
+                if self.params.logic_mode == "base":
+                    if not volatility_ok():
+                        return False
+                    return c2 < bl2 and c1 > bl1 and c1 <= bm1
                 time_ok = self._time_filter_ok(ts)
                 if time_ok:
                     bump("time_ok")
@@ -314,6 +319,10 @@ class BollMeanReversionStrategy:
                 return False
 
             def short_signal() -> bool:
+                if self.params.logic_mode == "base":
+                    if not volatility_ok():
+                        return False
+                    return c2 > bu2 and c1 < bu1 and c1 >= bm1
                 time_ok = self._time_filter_ok(ts)
                 if time_ok:
                     bump("time_ok")
@@ -367,6 +376,12 @@ class BollMeanReversionStrategy:
             def exit_signal() -> bool:
                 if position == 0:
                     return False
+                if self.params.logic_mode == "base":
+                    bid_now = open0.iloc[idx]
+                    middle_ref = bm1
+                    if position > 0:
+                        return bid_now >= middle_ref
+                    return bid_now <= middle_ref
                 if open_time is not None:
                     elapsed = (ts - open_time).total_seconds()
                     if elapsed < self.params.shortest_closing_time:

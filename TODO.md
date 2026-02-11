@@ -1,5 +1,13 @@
 ﻿# TODO
 
+## 执行顺序总览
+
+- [ ] M1（Mean Reversion）：先 base 基线验证 → 再小范围参数优化 → 再逐项叠加 enhanced 组件
+- [ ] M2（Trend Pullback）：先 M15 方向框架 → 再 M5 回撤入场 → 再小范围优化 → 再过滤/风控叠加
+- [ ] M3（Regime Filter）：先规则过滤验证 → 再 ML 打分/权重 → 最后接入策略组合与风控
+- [ ] M4（回测评估）：先指标口径统一 → 再批量评估/相关性 → 最后引入更复杂评估维度
+- [ ] XAUUSD Alpha：先结构识别 → 再仓位结构 → 最后参数优化
+
 ## 已完成
 
 - [x] BollMR 分层出场与回落保护（支持部分平仓信号）
@@ -24,24 +32,35 @@
 
 ## 待办
 
+## 全局规划（Mean Reversion Family）
+
+- [ ] Phase 1 基线：基于“正确 Boll 轨道”的 base 逻辑完成小范围参数优化
+- [ ] Phase 2 验证：MT5 每次报价回测验证（同区间、同参数、同成本）
+- [ ] Phase 3 增强：仅在 base 稳定后，再逐项叠加 enhanced 组件验证贡献度
+
 ## 里程碑 M1: Mean Reversion Family
 
+- [ ] 执行顺序：先 base 基线验证 → 再小范围参数优化 → 再逐项叠加 enhanced 组件
 - [x] 策略族拆分（Mean Reversion Family）
 - [x] M1.a BB+ATR（基础回归）
 - [x] M1.b BB+RSI（动能过滤）
 - [x] M1.c BB+时间过滤（伦敦/美盘窗口）
 - [x] M1.d 组合过滤（RSI + 时间窗口）
-- [ ] M1.e 参数敏感性与小规模优化（BB/ATR/RSI/时间窗）【进行中】
-  - [x] 小规模网格参数脚本（param_sweep.py）
-  - [x] Top‑N 输出与排序策略（收益优先 / 稳健优先）
-  - [x] 多源数据对比（mt5 / dukascopy）
-  - [x] 结果复盘模板（收益、回撤、成交数）
-- [ ] M1.x Enhanced（BB+ATR+MA+Time+分层退出）作为实验对照组
+- [ ] M1.e 参数敏感性与小规模优化（转为 enhanced）【进行中】
+- [x] Base 小范围参数扫面结论：当前区间不适配（收益/回撤不达标）
+- [ ] Enhanced 小范围参数扫描（BollPeriod/BollDev/MAPeriod/MaxHoldingBars/EntryMode）
+- [ ] MT5 每次报价验证（enhanced 组合，固定区间与成本）
+- [x] 小规模网格参数脚本（param_sweep.py）
+- [x] Top‑N 输出与排序策略（收益优先 / 稳健优先）
+- [x] 多源数据对比（mt5 / dukascopy）
+- [x] 结果复盘模板（收益、回撤、成交数）
+- [ ] M1.x Enhanced（BB+ATR+MA+Time+分层退出）作为实验对照组【暂缓，等 base 稳定后推进】
 - [ ] 提供一份第三方 CSV 样例（列名/时间格式）用于解析验证
 - [ ] 增加 Dukascopy/TrueFX 下载与清洗模块
 
 ## 里程碑 M2: Trend Pullback Family v1
 
+- [ ] 执行顺序：先 M15 方向框架 → 再 M5 回撤入场 → 再小范围优化 → 再过滤/风控叠加
 - [ ] M15 定方向 + M5 回撤入场
 - [ ] M2.a M15：EMA50/EMA200 方向
 - [ ] M2.b M5：回撤到 EMA20/VWAP + 小结构确认
@@ -50,6 +69,7 @@
 
 ## 里程碑 M3: Regime Filter（规则 → ML）
 
+- [ ] 执行顺序：先规则过滤验证 → 再 ML 打分/权重 → 最后接入策略组合与风控
 - [ ] M3 Regime Filter（先规则后 ML）
 - [ ] M3.a 输出不同策略族权重（不直接下单）
 - [ ] M3.b 指标：ATR 变化、假突破频率、回撤吞没速度
@@ -57,6 +77,7 @@
 
 ## 里程碑 M4: 回测评估升级
 
+- [ ] 执行顺序：先指标口径统一 → 再批量评估/相关性 → 最后引入更复杂评估维度
 - [ ] M4 回测评估升级
 - [ ] M4.a 不同 Regime 下胜率/回撤/收益
 - [ ] M4.b 策略间相关性矩阵
@@ -67,6 +88,7 @@
 
 ## XAUUSD 美盘 Alpha 体系（基于 xauusd.md）
 
+- [ ] 执行顺序：先结构识别（Regime/BreakoutHold/回撤失败）→ 再仓位结构（试错/主攻/加仓）→ 最后参数优化
 - [ ] 模块化伪代码拆分（Entry Gate / Probe / Confirm / Attack / Exit / FailSafe）
 - [ ] A/B/C Regime 分类器（A1/A2/B1/B2/C1/C2 规则）
 - [ ] 资金曲线模型：试错仓 → 主攻仓 → 加仓（风控与回撤边界）
@@ -74,3 +96,4 @@
 - [ ] 实盘接入清单（风控开关、交易频次限制、日志/监控）
 - [ ] BreakoutHold 定义与回撤失败标准（工程版）
 - [ ] 入场/退出/止损（可选）策略细则固化
+
