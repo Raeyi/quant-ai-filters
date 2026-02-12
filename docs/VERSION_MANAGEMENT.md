@@ -42,10 +42,8 @@ git push origin EA_2.0.0 --tags
 
 | 版本 | 里程碑 | 日期 | 说明 |
 |------|--------|------|------|
-| 2.0.0 | - | - | 初始版本 |
-| 2.1.0 | M1 | - | Mean Reversion Family 完成 |
-| 2.2.0 | M2 | - | Trend Pullback Family 完成 |
-| 2.3.0 | M3 | - | XAUUSD Alpha 完成 |
+| 2.0.0 | - | 2025-01 | 初始版本 |
+| 2.1.0 | M1+M2 | 2026-02 | Mean Reversion + TrendPullback + Combo 优化 |
 
 ## CI/CD 配置
 
@@ -73,11 +71,11 @@ git push origin EA_2.0.0 --tags
 ## 分支策略
 
 ```
-EA_2.0.0 (主分支，受保护)
+EA_2.1.0 (当前主分支)
     ↑
-    ├── milestone/m1-mean-reversion-family → 合并 → v2.1.0
-    ├── milestone/m2-trend-pullback       → 合并 → v2.2.0
-    └── milestone/m3-xauusd-alpha         → 合并 → v2.3.0
+    ├── milestone/m1-mean-reversion-family → 已合并 → v2.1.0
+    ├── milestone/m2-trend-pullback       → 已合并 → v2.1.0
+    └── milestone/m3-xauusd-alpha         → 待开发 → v2.2.0
 ```
 
 ### 合并规则
