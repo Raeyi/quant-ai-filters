@@ -10,3 +10,6 @@ quant_venv/
 Python/data/raw_dukascopy/
 data/
 data/**
+
+# 但保留 release 产物（由 CI/CD 管理）
+!dist/*.ex5

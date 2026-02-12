@@ -1,0 +1,61 @@
+# =============================================================================
+# PR Check Workflow
+# =============================================================================
+# 在 PR 时进行代码检查（不编译，因为需要 MT5 环境）
+# =============================================================================
+
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - EA_2.0.0
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Check MQL5 syntax (basic)
+        run: |
+          echo "=== Checking MQL5 files ==="
+          # 检查是否有明显的语法错误（简单检查）
+          find . -name "*.mq5" -o -name "*.mqh" | while read file; do
+            echo "Checking $file"
+            # 检查括号匹配
+            opens=$(grep -o '{' "$file" | wc -l)
+            closes=$(grep -o '}' "$file" | wc -l)
+            if [ "$opens" != "$closes" ]; then
+              echo "ERROR: Bracket mismatch in $file ({: $opens, }: $closes)"
+              exit 1
+            fi
+          done
+          echo "All checks passed!"
+      
+      - name: Check Python syntax
+        run: |
+          echo "=== Checking Python files ==="
+          find Python -name "*.py" -exec python3 -m py_compile {} \;
+          echo "All Python files OK!"
+      
+      - name: Check TODO progress
+        run: |
+          echo "=== TODO Progress ==="
+          grep -E "^\s*-\s*\[[ x]\]" TODO.md | head -20
+
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Check Version.mqh exists
+        run: |
+          if [ -f "Core/Version.mqh" ]; then
+            echo "Version.mqh found:"
+            grep -E "#define EA_VERSION" Core/Version.mqh
+          else
+            echo "WARNING: Version.mqh not found"
+          fi

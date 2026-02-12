@@ -4,10 +4,14 @@
 //+------------------------------------------------------------------+
 #property strict
 #property description "StrategyManager + BollMR + RiskPipeline + AI Filter"
+#property version   "2.0.0"
 
 // 标准库
 #include <Trade/Trade.mqh>
 #include <Files/File.mqh>
+
+// 版本管理
+#include "Core/Version.mqh"
 
 // 指标
 #include "Indicators/Bollinger.mqh"
