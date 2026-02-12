@@ -411,7 +411,7 @@ public:
 
         if(diff < 0)          // H1 均线在明显向下 → 不做多
             return false;
-        if(slope_abs > 100)   // 斜率太大 → 强趋势，先不 MR
+        if(slope_abs > BollMR_Slope_Abs)   // 斜率太大 → 强趋势，先不 MR
             return false;
 
         return true;
@@ -430,7 +430,7 @@ public:
 
         if(diff > 0)          // H1 均线在明显向上 → 不做空
             return false;
-        if(slope_abs > 100)   // 斜率太大 → 强趋势，先不 MR
+        if(BollMR_Slope_Abs)   // 斜率太大 → 强趋势，先不 MR
             return false;
 
         return true;

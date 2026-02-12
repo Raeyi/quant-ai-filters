@@ -29,35 +29,20 @@ class DataPaths:
 
 @dataclass
 class BollMrSettings:
-    # Strategy variant selector
-    logic_mode: str = "enhanced"
-    # Entry mode (enhanced only)
     entry_mode: str = "A"
-    # Time filter
-    allowed_start_hour: int = 8
-    allowed_end_hour: int = 16
-    time_offset_hours: float = 0.0
-    # Bollinger bands
+    allowed_start_hour: int = 2
+    allowed_end_hour: int = 20
     boll_period: int = 20
     boll_dev: float = 2.0
-    # ATR
     atr_period: int = 14
-    atr_vol_limit: float = 1.5
-    # RSI
-    rsi_period: int = 14
-    rsi_overbought: float = 70.0
-    rsi_oversold: float = 30.0
-    # Stop loss
     shortest_closing_time: int = 10
     struct_atr_sl: float = 0.8
     vol_atr_sl: float = 2.0
-    # Exit targets (enhanced only)
     mid_atr_tp: float = 0.2
     mid_atr_tp2: float = 0.5
     uplow_atr_tp: float = 0.1
-    # MA trend filter (enhanced only)
     ma_period: int = 50
-    # Risk controls
+    time_offset_hours: float = 0.0
     max_holding_bars: int = 0
     max_daily_loss_percent: float = 0.0
     risk_percent: float = 0.0
@@ -65,7 +50,6 @@ class BollMrSettings:
     cooldown_bars_after: int = 0
     cooldown_seconds: int = 0
     min_confidence: float = 0.0
-    # Gap handling
     gap_cooldown_bars: int = 5
     gap_threshold_multiplier: float = 1.5
 
@@ -129,18 +113,12 @@ def load_settings(path: str | Path) -> AppSettings:
         mt5_common_root=_get(paths_raw, "mt5_common_root", ""),
     )
     boll = BollMrSettings(
-        logic_mode=_get(boll_raw, "logic_mode", "enhanced"),
         entry_mode=_get(boll_raw, "entry_mode", "A"),
-        allowed_start_hour=int(_get(boll_raw, "allowed_start_hour", 8)),
-        allowed_end_hour=int(_get(boll_raw, "allowed_end_hour", 16)),
-        time_offset_hours=float(_get(boll_raw, "time_offset_hours", 0.0)),
+        allowed_start_hour=int(_get(boll_raw, "allowed_start_hour", 2)),
+        allowed_end_hour=int(_get(boll_raw, "allowed_end_hour", 20)),
         boll_period=int(_get(boll_raw, "boll_period", 20)),
         boll_dev=float(_get(boll_raw, "boll_dev", 2.0)),
         atr_period=int(_get(boll_raw, "atr_period", 14)),
-        atr_vol_limit=float(_get(boll_raw, "atr_vol_limit", 1.5)),
-        rsi_period=int(_get(boll_raw, "rsi_period", 14)),
-        rsi_overbought=float(_get(boll_raw, "rsi_overbought", 70.0)),
-        rsi_oversold=float(_get(boll_raw, "rsi_oversold", 30.0)),
         shortest_closing_time=int(_get(boll_raw, "shortest_closing_time", 10)),
         struct_atr_sl=float(_get(boll_raw, "struct_atr_sl", 0.8)),
         vol_atr_sl=float(_get(boll_raw, "vol_atr_sl", 2.0)),
@@ -148,6 +126,7 @@ def load_settings(path: str | Path) -> AppSettings:
         mid_atr_tp2=float(_get(boll_raw, "mid_atr_tp2", 0.5)),
         uplow_atr_tp=float(_get(boll_raw, "uplow_atr_tp", 0.1)),
         ma_period=int(_get(boll_raw, "ma_period", 50)),
+        time_offset_hours=float(_get(boll_raw, "time_offset_hours", 0.0)),
         max_holding_bars=int(_get(boll_raw, "max_holding_bars", 0)),
         max_daily_loss_percent=float(_get(boll_raw, "max_daily_loss_percent", 0.0)),
         risk_percent=float(_get(boll_raw, "risk_percent", 0.0)),

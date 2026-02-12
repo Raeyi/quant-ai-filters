@@ -35,5 +35,6 @@ input double BollMR_UplowATRTP         = 0.1;  // 上/下轨止盈 ATR 倍数
 input int    BollMR_MAPeriod           = 50;   // MA 周期
 input string BollMR_EntryMode          = "A";  // 入场模式：A / B / C
 input bool   BollMR_LogSignalDetails   = true; // 仅在信号生成时打印关键信息
+input int    BollMR_Slope_Abs          = 150;   // 斜率绝对值阈值
 
 #endif // __INPUTS_BOLLMR_MQH__

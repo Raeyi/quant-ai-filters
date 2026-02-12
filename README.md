@@ -98,6 +98,25 @@ python Python/utils/param_sweep.py ^
 - 顺序：结构识别 → 仓位结构 → 参数优化
 - 详细规范见 `TODO.md`
 
+## 参数优化关键发现（BollMR base 模式）
+
+基于 2025.09.01 - 2026.01.30 的 XAUUSD M5 数据参数扫描结果：
+
+| 参数 | 优化建议 | 说明 |
+|------|----------|------|
+| boll_dev | **2.5**（原 2.0） | 更宽的布林带能过滤更多假信号 |
+| atr_vol_limit | **1.2**（原 1.5） | 更严格的波动率过滤效果更好 |
+| boll_period | **15-20** | 最佳范围 |
+| atr_period | **10**（原 14） | 较短周期反应更快 |
+
+**最佳组合**：`boll_period=15, boll_dev=2.5, atr_period=10, atr_vol_limit=1.2`
+- 总收益：+5412（5个月）
+- 胜率：61.8%
+- 盈亏比：1.38
+- 交易数：421笔
+
+> 注意：以上优化基于 base 模式（无时间/RSI/MA过滤），enhanced 模式参数需单独验证。
+
 ## 说明
 
 - `features.csv` / `signals_mt5.csv` 用于 MT5 与 Python 对齐
