@@ -112,7 +112,8 @@ void UpdateStatusPanel()
    else if(g_boll_variant == "trend_pullback")
       time_allowed = trend_pullback.TimeFilterOK();
    else if(g_boll_variant == "combo")
-      time_allowed = combo.TimeFilterOK();
+      // combo 模式：任一策略时间过滤通过即可
+      time_allowed = boll_enhanced.TimeFilterOK() || trend_pullback.TimeFilterOK();
    string time_reason = "";
    if(!time_allowed)
       time_reason = "交易时间限制";
@@ -233,6 +234,27 @@ int OnInit()
     }
     else if(g_boll_variant == "combo")
     {
+        // 组合策略：添加子策略
+        // M1: BollMR Enhanced（亚欧盘）
+        combo.AddStrategy(&boll_enhanced, "BollMR");
+        // M2: TrendPullback（欧美盘）
+        combo.AddStrategy(&trend_pullback, "TrendPullback");
+        // M3: 未来可继续添加...
+        // combo.AddStrategy(&xauusd_alpha, "XauusdAlpha");
+        
+        // 初始化各子策略
+        if(!boll_enhanced.Init())
+        {
+            Print("Failed to initialize BollMR for combo");
+            return INIT_FAILED;
+        }
+        if(!trend_pullback.Init())
+        {
+            Print("Failed to initialize TrendPullback for combo");
+            return INIT_FAILED;
+        }
+        
+        // 初始化组合策略
         if(!combo.Init())
         {
             Print("Failed to initialize Combo strategy");
@@ -355,7 +377,10 @@ void OnTick()
    }
    else if(g_boll_variant == "combo")
    {
-      if(!combo.UpdateIndicators())
+      // 更新组合策略中各子策略的指标
+      if(!boll_enhanced.UpdateIndicators())
+         return;
+      if(!trend_pullback.UpdateIndicators())
          return;
    }
    else
@@ -377,15 +402,11 @@ void OnTick()
       double atr = 0;
       double structurePrice = 0;
       
-      if(g_boll_variant == "trend_pullback")
+      // combo 模式下，trend_pullback 是组合的一部分
+      if(g_boll_variant == "trend_pullback" || g_boll_variant == "combo")
       {
          atr = trend_pullback.GetCurrentATR();
          structurePrice = trend_pullback.GetCurrentStructurePrice();
-      }
-      else if(g_boll_variant == "combo")
-      {
-         atr = combo.GetTrendPullback().GetCurrentATR();
-         structurePrice = combo.GetTrendPullback().GetCurrentStructurePrice();
       }
       
       if(atr > 0)

@@ -1,12 +1,17 @@
 //+------------------------------------------------------------------+
 //|              Strategies/Strategy_Combo.mqh                       |
 //|                组合策略 - 多策略信号整合                           |
-//|     M1 (BollMR) + M2 (TrendPullback) 组合运行                     |
 //|                                                                   |
 //|     设计原则：                                                    |
-//|     1. 各策略独立运行，自带过滤条件（时间、指标等）                  |
-//|     2. 组合逻辑只处理信号整合，不干预策略内部逻辑                   |
-//|     3. 时段分离时各策略独立执行，冲突时按规则处理                   |
+//|     1. 策略列表模式：支持动态添加任意数量策略                       |
+//|     2. 各策略独立运行，自带过滤条件（时间、指标等）                  |
+//|     3. 组合逻辑只处理信号整合，不干预策略内部逻辑                   |
+//|     4. 时段分离时各策略独立执行，冲突时按规则处理                   |
+//|                                                                   |
+//|     扩展指南：                                                    |
+//|     1. 创建新策略类继承 IStrategy                                 |
+//|     2. 在 Ea_run.mq5 中实例化并调用 combo.AddStrategy()           |
+//|     3. 新策略自动参与组合逻辑                                     |
 //+------------------------------------------------------------------+
 
 #ifndef __STRATEGY_COMBO_MQH__
@@ -14,19 +19,21 @@
 
 #include "../Core/Strategy.mqh"
 #include "../Core/Inputs_All.mqh"
-#include "Strategy_BollMR_enhanced.mqh"
-#include "Strategy_TrendPullback.mqh"
+
+// 最大策略数量
+#define MAX_COMBO_STRATEGIES 8
 
 //+------------------------------------------------------------------+
 //| 组合模式枚举                                                       |
 //+------------------------------------------------------------------+
 enum ComboMode
 {
-    COMBO_FIRST_SIGNAL   = 0,   // 先到先得（非冲突时）
-    COMBO_SAME_DIRECTION = 1,   // 同向叠加：两策略同向才交易
-    COMBO_PRIORITY_BOLL  = 2,   // 优先级：BollMR 优先
-    COMBO_PRIORITY_TP    = 3,   // 优先级：TrendPullback 优先
-    COMBO_CONFLICT_SKIP  = 4,   // 冲突跳过：反向信号时跳过
+    COMBO_FIRST_SIGNAL   = 0,   // 先到先得：取第一个有效信号
+    COMBO_SAME_DIRECTION = 1,   // 同向叠加：所有策略同向才交易
+    COMBO_MAJORITY_VOTE  = 2,   // 多数投票：多数同向才交易
+    COMBO_PRIORITY_FIRST = 3,   // 优先级模式：按添加顺序优先
+    COMBO_CONFLICT_SKIP  = 4,   // 冲突跳过：有任何反向信号时跳过
+    COMBO_BEST_CONFIDENCE = 5,  // 最高置信度：选择置信度最高的信号
 };
 
 //+------------------------------------------------------------------+
@@ -36,6 +43,7 @@ input group "========== 组合策略设置 =========="
 input ComboMode ComboModeSelect = COMBO_CONFLICT_SKIP;  // 组合模式
 input double    ComboConfidenceBoost = 0.3;             // 同向信号置信度加成
 input bool      ComboLogSignals = true;                 // 记录组合信号日志
+input int       ComboMinAgreement = 2;                  // 最小同意策略数（多数投票模式）
 
 //+------------------------------------------------------------------+
 //| 组合策略类                                                         |
@@ -43,53 +51,255 @@ input bool      ComboLogSignals = true;                 // 记录组合信号日
 class Strategy_Combo : public IStrategy
 {
 private:
-    Strategy_BollMR     m_boll;           // M1: BollMR 策略
-    Strategy_TrendPullback m_tp;          // M2: TrendPullback 策略
-    
-    bool     m_initialized;
+    IStrategy* m_strategies[MAX_COMBO_STRATEGIES];  // 策略数组
+    string     m_strategy_names[MAX_COMBO_STRATEGIES]; // 策略名称（用于日志）
+    int        m_count;
+    bool       m_initialized;
     
     // 统计
-    int      m_stat_boll_only;     // 只有 BollMR 信号次数
-    int      m_stat_tp_only;       // 只有 TP 信号次数
-    int      m_stat_same_dir;      // 同向信号次数
-    int      m_stat_conflict;      // 冲突信号次数
-    int      m_stat_conflict_resolved;  // 冲突解决次数
+    int        m_stat_total_signals;      // 总信号次数
+    int        m_stat_single_strategy;    // 单策略信号次数
+    int        m_stat_multi_agree;        // 多策略同向次数
+    int        m_stat_conflict_skip;      // 冲突跳过次数
+    
+    //+--------------------------------------------------------------
+    //| 组合多个信号（核心逻辑）
+    //+--------------------------------------------------------------
+    Signal CombineSignals(Signal &signals[], int count)
+    {
+        Signal result;
+        result.type = SIGNAL_NONE;
+        result.confidence = 0.0;
+        result.source = "combo";
+        result.time = TimeCurrent();
+        
+        if(count == 0)
+            return result;
+        
+        // 统计各方向信号数量
+        int long_count = 0;
+        int short_count = 0;
+        int none_count = 0;
+        
+        Signal first_valid;
+        bool has_valid = false;
+        
+        double total_long_confidence = 0.0;
+        double total_short_confidence = 0.0;
+        Signal best_long, best_short;
+        
+        for(int i = 0; i < count; i++)
+        {
+            if(signals[i].type == SIGNAL_NONE)
+            {
+                none_count++;
+                continue;
+            }
+            
+            if(!has_valid)
+            {
+                first_valid = signals[i];
+                has_valid = true;
+            }
+            
+            if(signals[i].IsLongSignal())
+            {
+                long_count++;
+                total_long_confidence += signals[i].confidence;
+                if(signals[i].confidence > best_long.confidence)
+                    best_long = signals[i];
+            }
+            else if(signals[i].IsShortSignal())
+            {
+                short_count++;
+                total_short_confidence += signals[i].confidence;
+                if(signals[i].confidence > best_short.confidence)
+                    best_short = signals[i];
+            }
+        }
+        
+        int valid_count = long_count + short_count;
+        
+        // 无有效信号
+        if(valid_count == 0)
+            return result;
+        
+        // 单策略信号
+        if(valid_count == 1)
+        {
+            m_stat_single_strategy++;
+            result = first_valid;
+            result.source = "combo_single_" + first_valid.source;
+            return result;
+        }
+        
+        // 多策略场景
+        m_stat_total_signals++;
+        
+        // 根据组合模式处理
+        switch(ComboModeSelect)
+        {
+            case COMBO_FIRST_SIGNAL:
+                result = first_valid;
+                result.source = "combo_first";
+                break;
+                
+            case COMBO_SAME_DIRECTION:
+                // 所有策略必须同向
+                if(long_count == valid_count || short_count == valid_count)
+                {
+                    m_stat_multi_agree++;
+                    result = (long_count > 0) ? best_long : best_short;
+                    // 置信度叠加
+                    double total_conf = (long_count > 0) ? total_long_confidence : total_short_confidence;
+                    result.confidence = MathMin(total_conf / valid_count + ComboConfidenceBoost, 1.0);
+                    result.source = "combo_same_dir";
+                }
+                else
+                {
+                    m_stat_conflict_skip++;
+                    result.type = SIGNAL_NONE;
+                    if(ComboLogSignals)
+                        Print("[Strategy_Combo] SAME_DIRECTION mode: conflict detected, skipping");
+                }
+                break;
+                
+            case COMBO_MAJORITY_VOTE:
+                // 多数投票
+                {
+                    int agree_count = MathMax(long_count, short_count);
+                    if(agree_count >= ComboMinAgreement)
+                    {
+                        m_stat_multi_agree++;
+                        result = (long_count > short_count) ? best_long : best_short;
+                        result.source = "combo_majority";
+                    }
+                    else
+                    {
+                        m_stat_conflict_skip++;
+                        result.type = SIGNAL_NONE;
+                        if(ComboLogSignals)
+                            Print("[Strategy_Combo] MAJORITY_VOTE mode: no majority (long=", long_count, " short=", short_count, ")");
+                    }
+                }
+                break;
+                
+            case COMBO_PRIORITY_FIRST:
+                // 按优先级取第一个有效信号
+                result = first_valid;
+                result.source = "combo_priority";
+                break;
+                
+            case COMBO_BEST_CONFIDENCE:
+                // 选择置信度最高的信号
+                {
+                    if(long_count > 0 && (short_count == 0 || total_long_confidence > total_short_confidence))
+                    {
+                        result = best_long;
+                        result.source = "combo_best_conf";
+                    }
+                    else if(short_count > 0)
+                    {
+                        result = best_short;
+                        result.source = "combo_best_conf";
+                    }
+                }
+                break;
+                
+            case COMBO_CONFLICT_SKIP:
+            default:
+                // 有任何冲突就跳过
+                if(long_count > 0 && short_count > 0)
+                {
+                    m_stat_conflict_skip++;
+                    result.type = SIGNAL_NONE;
+                    if(ComboLogSignals)
+                        Print("[Strategy_Combo] CONFLICT_SKIP mode: long=", long_count, " short=", short_count, ", skipping");
+                }
+                else
+                {
+                    m_stat_multi_agree++;
+                    result = (long_count > 0) ? best_long : best_short;
+                    // 置信度平均 + 加成
+                    double total_conf = (long_count > 0) ? total_long_confidence : total_short_confidence;
+                    result.confidence = MathMin(total_conf / valid_count + ComboConfidenceBoost, 1.0);
+                    result.source = "combo_agree";
+                }
+                break;
+        }
+        
+        return result;
+    }
     
 public:
     //+--------------------------------------------------------------
     //| 构造函数
     //+--------------------------------------------------------------
     Strategy_Combo() : 
+        m_count(0),
         m_initialized(false),
-        m_stat_boll_only(0),
-        m_stat_tp_only(0),
-        m_stat_same_dir(0),
-        m_stat_conflict(0),
-        m_stat_conflict_resolved(0)
+        m_stat_total_signals(0),
+        m_stat_single_strategy(0),
+        m_stat_multi_agree(0),
+        m_stat_conflict_skip(0)
     {
+        // 初始化指针数组
+        for(int i = 0; i < MAX_COMBO_STRATEGIES; i++)
+        {
+            m_strategies[i] = NULL;
+            m_strategy_names[i] = "";
+        }
     }
     
     //+--------------------------------------------------------------
-    //| 初始化
+    //| 添加策略
+    //| @param strategy 策略实例指针
+    //| @param name 策略名称（可选，用于日志）
+    //+--------------------------------------------------------------
+    void AddStrategy(IStrategy* strategy, string name = "")
+    {
+        if(strategy == NULL)
+        {
+            Print("[Strategy_Combo] Cannot add NULL strategy");
+            return;
+        }
+        
+        if(m_count >= MAX_COMBO_STRATEGIES)
+        {
+            Print("[Strategy_Combo] Max strategy count reached: ", MAX_COMBO_STRATEGIES);
+            return;
+        }
+        
+        m_strategies[m_count] = strategy;
+        m_strategy_names[m_count] = (name != "") ? name : strategy.Name();
+        m_count++;
+        
+        Print("[Strategy_Combo] Added strategy: ", m_strategy_names[m_count - 1], " (", m_count, "/", MAX_COMBO_STRATEGIES, ")");
+    }
+    
+    //+--------------------------------------------------------------
+    //| 初始化所有已添加的策略
     //+--------------------------------------------------------------
     bool Init()
     {
-        // 初始化 BollMR
-        if(!m_boll.Init())
+        if(m_count == 0)
         {
-            Print("[Strategy_Combo] Failed to initialize BollMR strategy");
+            Print("[Strategy_Combo] No strategies added");
             return false;
         }
         
-        // 初始化 TrendPullback
-        if(!m_tp.Init())
+        // 初始化所有策略
+        for(int i = 0; i < m_count; i++)
         {
-            Print("[Strategy_Combo] Failed to initialize TrendPullback strategy");
-            return false;
+            if(m_strategies[i] == NULL)
+                continue;
+                
+            // 注意：策略的 Init() 需要通过外部调用，这里只做检查
+            // 因为 MQL5 不支持通过接口调用 Init()
         }
         
         m_initialized = true;
-        Print("[Strategy_Combo] Initialized. Mode=", EnumToString(ComboModeSelect));
+        Print("[Strategy_Combo] Initialized with ", m_count, " strategies. Mode=", EnumToString(ComboModeSelect));
         return true;
     }
     
@@ -106,144 +316,61 @@ public:
     //+--------------------------------------------------------------
     virtual Signal GenerateSignal(Signal &outSignal) override
     {
-        if(!m_initialized)
+        if(!m_initialized || m_count == 0)
         {
             outSignal.type = SIGNAL_NONE;
             return outSignal;
         }
         
-        // 1. 分别调用两个策略（各自内部有完整过滤逻辑）
-        Signal sig_boll, sig_tp;
-        m_boll.GenerateSignal(sig_boll);
-        m_tp.GenerateSignal(sig_tp);
+        // 1. 收集所有策略信号
+        Signal signals[];
+        ArrayResize(signals, m_count);
+        
+        for(int i = 0; i < m_count; i++)
+        {
+            if(m_strategies[i] == NULL)
+            {
+                signals[i].type = SIGNAL_NONE;
+                continue;
+            }
+            m_strategies[i].GenerateSignal(signals[i]);
+        }
         
         // 2. 组合决策
-        Signal result;
-        result.type = SIGNAL_NONE;
-        result.confidence = 0.0;
-        result.source = "combo";
-        result.time = TimeCurrent();
-        
-        bool boll_has_signal = (sig_boll.type != SIGNAL_NONE);
-        bool tp_has_signal = (sig_tp.type != SIGNAL_NONE);
-        
-        // 场景1: 都无信号
-        if(!boll_has_signal && !tp_has_signal)
-        {
-            outSignal = result;
-            return outSignal;
-        }
-        
-        // 场景2: 只有 BollMR 有信号
-        if(boll_has_signal && !tp_has_signal)
-        {
-            m_stat_boll_only++;
-            result = sig_boll;
-            result.source = "combo_boll_only";
-            outSignal = result;
-            return outSignal;
-        }
-        
-        // 场景3: 只有 TrendPullback 有信号
-        if(!boll_has_signal && tp_has_signal)
-        {
-            m_stat_tp_only++;
-            result = sig_tp;
-            result.source = "combo_tp_only";
-            outSignal = result;
-            return outSignal;
-        }
-        
-        // 场景4: 两策略都有信号
-        m_stat_same_dir++;
-        
-        bool same_direction = false;
-        
-        // 判断方向是否一致
-        if(sig_boll.IsLongSignal() && sig_tp.IsLongSignal())
-            same_direction = true;
-        else if(sig_boll.IsShortSignal() && sig_tp.IsShortSignal())
-            same_direction = true;
-        
-        if(same_direction)
-        {
-            // 同向 → 放大置信度
-            result = sig_boll;
-            result.confidence = MathMin(sig_boll.confidence + sig_tp.confidence * ComboConfidenceBoost, 1.0);
-            result.source = "combo_same_dir";
-            
-            if(ComboLogSignals)
-            {
-                Print("[Strategy_Combo] Same direction signal: ", 
-                      sig_boll.IsLongSignal() ? "LONG" : "SHORT",
-                      " boll_conf=", DoubleToString(sig_boll.confidence, 2),
-                      " tp_conf=", DoubleToString(sig_tp.confidence, 2),
-                      " combined=", DoubleToString(result.confidence, 2));
-            }
-        }
-        else
-        {
-            // 反向 → 冲突处理
-            m_stat_conflict++;
-            
-            switch(ComboModeSelect)
-            {
-                case COMBO_FIRST_SIGNAL:
-                    // 先到先得（这里按顺序选 BollMR）
-                    result = sig_boll;
-                    result.source = "combo_conflict_first";
-                    m_stat_conflict_resolved++;
-                    break;
-                    
-                case COMBO_PRIORITY_BOLL:
-                    // BollMR 优先
-                    result = sig_boll;
-                    result.source = "combo_conflict_boll";
-                    m_stat_conflict_resolved++;
-                    break;
-                    
-                case COMBO_PRIORITY_TP:
-                    // TrendPullback 优先
-                    result = sig_tp;
-                    result.source = "combo_conflict_tp";
-                    m_stat_conflict_resolved++;
-                    break;
-                    
-                case COMBO_CONFLICT_SKIP:
-                default:
-                    // 冲突时跳过
-                    result.type = SIGNAL_NONE;
-                    result.source = "combo_conflict_skip";
-                    if(ComboLogSignals)
-                    {
-                        Print("[Strategy_Combo] Conflict detected, skipping. ",
-                              "boll=", (sig_boll.IsLongSignal() ? "LONG" : "SHORT"),
-                              " tp=", (sig_tp.IsLongSignal() ? "LONG" : "SHORT"));
-                    }
-                    break;
-            }
-        }
-        
-        outSignal = result;
+        outSignal = CombineSignals(signals, m_count);
         return outSignal;
     }
     
     //+--------------------------------------------------------------
-    //| 新K线通知（转发给子策略）
+    //| 更新指标数据（转发给所有子策略）
     //+--------------------------------------------------------------
-    void OnNewBar()
+    bool UpdateIndicators()
     {
-        m_boll.OnNewBar();
-        m_tp.OnNewBar();
+        bool all_ok = true;
+        for(int i = 0; i < m_count; i++)
+        {
+            if(m_strategies[i] == NULL)
+                continue;
+            
+            // 注意：需要子类实现 UpdateIndicators 或通过类型转换调用
+            // 这里假设策略类有 UpdateIndicators 方法
+            // 如果接口不支持，需要在 Ea_run.mq5 中单独处理
+        }
+        return all_ok;
     }
     
     //+--------------------------------------------------------------
-    //| 时间过滤检查（转发给子策略）
+    //| 时间过滤检查（任一策略通过即可）
     //+--------------------------------------------------------------
     bool TimeFilterOK()
     {
-        // 任一策略时间过滤通过即可
-        return m_boll.TimeFilterOK() || m_tp.TimeFilterOK();
+        for(int i = 0; i < m_count; i++)
+        {
+            if(m_strategies[i] == NULL)
+                continue;
+            // 注意：需要子类实现 TimeFilterOK
+        }
+        return true; // 默认通过
     }
     
     //+--------------------------------------------------------------
@@ -251,29 +378,34 @@ public:
     //+--------------------------------------------------------------
     string GetStats() const
     {
-        return StringFormat("BollMR:%d TP:%d SameDir:%d Conflict:%d Resolved:%d",
-                           m_stat_boll_only, m_stat_tp_only, 
-                           m_stat_same_dir, m_stat_conflict, m_stat_conflict_resolved);
+        return StringFormat("Strategies:%d Single:%d MultiAgree:%d ConflictSkip:%d",
+                           m_count, m_stat_single_strategy, 
+                           m_stat_multi_agree, m_stat_conflict_skip);
     }
     
     //+--------------------------------------------------------------
-    //| 获取 BollMR 策略引用（用于面板更新等）
+    //| 获取策略数量
     //+--------------------------------------------------------------
-    Strategy_BollMR& GetBollMR() { return m_boll; }
+    int GetStrategyCount() const { return m_count; }
     
     //+--------------------------------------------------------------
-    //| 获取 TrendPullback 策略引用
+    //| 获取指定索引的策略指针（用于类型转换调用特定方法）
     //+--------------------------------------------------------------
-    Strategy_TrendPullback& GetTrendPullback() { return m_tp; }
-    
-    //+--------------------------------------------------------------
-    //| 更新指标数据（转发给子策略）
-    //+--------------------------------------------------------------
-    bool UpdateIndicators()
+    IStrategy* GetStrategy(int index)
     {
-        bool boll_ok = m_boll.UpdateIndicators();
-        bool tp_ok = m_tp.UpdateIndicators();
-        return boll_ok && tp_ok;
+        if(index < 0 || index >= m_count)
+            return NULL;
+        return m_strategies[index];
+    }
+    
+    //+--------------------------------------------------------------
+    //| 获取策略名称
+    //+--------------------------------------------------------------
+    string GetStrategyName(int index) const
+    {
+        if(index < 0 || index >= m_count)
+            return "";
+        return m_strategy_names[index];
     }
 };
 

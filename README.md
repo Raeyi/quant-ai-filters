@@ -40,7 +40,8 @@ quant-ai-filters/
 │   ├── Strategy_BollMR_Time.mqh
 │   ├── Strategy_BollMR_RSI_Time.mqh
 │   ├── Strategy_BollMR_enhanced.mqh
-│   └── Strategy_TrendPullback.mqh
+│   ├── Strategy_TrendPullback.mqh
+│   └── Strategy_Combo.mqh
 ├── Indicators/             # 指标模块
 │   ├── Bollinger.mqh
 │   └── ATR.mqh
@@ -163,12 +164,53 @@ struct Signal {
 **新增策略**：
 1. 继承 `IStrategy` 接口
 2. 实现 `GenerateSignal(Signal &sig)`
-3. 在 `Ea_run.mq5` 中注册到 `StrategyManager`
+3. 在 `Ea_run.mq5` 中注册到 `StrategyManager` 或 `Strategy_Combo`
 
 **新增风控模块**：
 1. 在 `Core/Risk/` 下创建新模块
 2. 在 `RiskPipeline` 中集成
 3. 在 `BuildTrade()` 中添加检查逻辑
+
+**新增策略到组合**：
+1. 创建新策略类继承 `IStrategy`
+2. 在 `Ea_run.mq5` 中实例化策略
+3. 在 combo 初始化时调用 `combo.AddStrategy(&new_strategy, "名称")`
+4. 初始化新策略：`new_strategy.Init()`
+
+### 多策略组合架构
+
+**核心设计**：`Strategy_Combo` 采用策略列表模式，支持动态添加任意数量策略（最多 8 个）。
+
+```
+Strategy_Combo
+├── m_strategies[]     // 策略数组
+├── AddStrategy()      // 添加策略
+└── GenerateSignal()   // 组合信号
+```
+
+**组合模式**：
+| 模式 | 说明 |
+|------|------|
+| `COMBO_FIRST_SIGNAL` | 先到先得：取第一个有效信号 |
+| `COMBO_SAME_DIRECTION` | 同向叠加：所有策略同向才交易 |
+| `COMBO_MAJORITY_VOTE` | 多数投票：多数同向才交易 |
+| `COMBO_PRIORITY_FIRST` | 优先级：按添加顺序优先 |
+| `COMBO_CONFLICT_SKIP` | 冲突跳过：有反向信号时跳过（默认） |
+| `COMBO_BEST_CONFIDENCE` | 最高置信度：选置信度最高的信号 |
+
+**使用示例**（Ea_run.mq5）：
+```cpp
+combo.AddStrategy(&boll_enhanced, "BollMR");      // M1: 亚欧盘
+combo.AddStrategy(&trend_pullback, "TrendPullback"); // M2: 欧美盘
+// combo.AddStrategy(&xauusd_alpha, "XauusdAlpha");   // M3 (未来)
+```
+
+**各策略独立过滤条件**：
+| 策略 | 时间过滤 | 说明 |
+|------|----------|------|
+| BollMR | 亚欧盘 | 均值回归适合震荡时段 |
+| TrendPullback | 欧美盘 | 趋势跟踪适合趋势时段 |
+| XauusdAlpha | 美盘 | 未来：结构策略 |
 
 ## 执行顺序总览
 
