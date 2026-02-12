@@ -29,6 +29,10 @@ on:
           - minor
           - patch
 
+# 权限配置
+permissions:
+  contents: write      # 推送代码、创建 tag 和 release
+
 env:
   EA_SOURCE: 'Ea_run.mq5'
   EA_OUTPUT: 'Ea_run.ex5'
