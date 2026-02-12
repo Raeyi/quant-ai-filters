@@ -10,13 +10,13 @@
 // - PATCH: Bug修复/小优化
 
 #define EA_VERSION_MAJOR    2
-#define EA_VERSION_MINOR    0
+#define EA_VERSION_MINOR    1
 #define EA_VERSION_PATCH    0
-#define EA_VERSION_STRING   "2.0.0"
+#define EA_VERSION_STRING   "2.1.0"
 
 // 里程碑状态
-#define MILESTONE_M1_COMPLETE  false   // Mean Reversion Family
-#define MILESTONE_M2_COMPLETE  false   // Trend Pullback Family
+#define MILESTONE_M1_COMPLETE  true    // Mean Reversion Family
+#define MILESTONE_M2_COMPLETE  true    // Trend Pullback Family
 #define MILESTONE_M3_COMPLETE  false   // XAUUSD Alpha
 
 // 构建信息（可由 CI/CD 注入）
