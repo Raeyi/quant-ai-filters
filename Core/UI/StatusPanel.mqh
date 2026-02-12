@@ -140,7 +140,7 @@ public:
       y      = 10;
       line   = 15;
       panel_width  = 320;
-      panel_height = 295;
+      panel_height = 310;  // 增加高度以容纳冷却状态行
       panel_border_color = clrDodgerBlue;
       panel_bg_color = clrBlack;
       font_size = 9;
@@ -171,6 +171,7 @@ public:
       CreateLabel("CONSEC_LOSS",  line * i++); i++;
       CreateLabel("NO_TRADE",     line * i++);
       CreateLabel("TIME_FILTER",  line * i++);
+      CreateLabel("COOLDOWN",     line * i++);  // 结构冷却器状态
       CreateLabel("STATUS",       line * i++);
       CreateLabel("RISK_STATUS",  line * i++);
    }
@@ -178,9 +179,12 @@ public:
    void Update(RiskPipeline& rp,
                PositionCoordinator& pc,
                bool ea_disabled,
-               const string &ea_reason,
+               const string ea_reason,
                bool time_allowed,
-               const string &time_reason)
+               const string time_reason,
+               bool structural_cooldown_active = false,
+               string structural_cooldown_reason = "",
+               int structural_cooldown_remaining = 0)
    {
       rp.RefreshStatus();
 
@@ -243,6 +247,17 @@ public:
       if(!time_allowed && time_reason != "")
          time_filter_text += " (" + time_reason + ")";
       SetText("TIME_FILTER", time_filter_text, time_allowed ? clrLime : clrOrange);
+
+      // 结构冷却器状态显示
+      string cooldown_text = "结构冷却: " + string(structural_cooldown_active ? "冷却中" : "正常");
+      if(structural_cooldown_active)
+      {
+         cooldown_text += " (" + structural_cooldown_reason;
+         if(structural_cooldown_remaining > 0)
+            cooldown_text += " 剩余" + IntegerToString(structural_cooldown_remaining) + "根K线";
+         cooldown_text += ")";
+      }
+      SetText("COOLDOWN", cooldown_text, structural_cooldown_active ? clrOrange : clrLime);
 
       string status = "等待信号";
       color status_color = clrWhite;

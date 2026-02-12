@@ -4,7 +4,7 @@
 #include "../Indicators/Bollinger.mqh"
 #include "../Indicators/ATR.mqh"
 #include "../Core/Strategy.mqh"
-#include "../Core/Inputs_BollMR.mqh"
+#include "../Core/Inputs_all.mqh"
 
 class Strategy_BollMR_Base : public IStrategy
 {

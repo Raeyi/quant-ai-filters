@@ -6,6 +6,7 @@
 #include "../Indicators/RSI.mqh"
 #include "../Core/Strategy.mqh"
 #include "../Core/Inputs_BollMR.mqh"
+#include "../Core/Inputs_all.mqh"
 
 class Strategy_BollMR_RSI : public IStrategy
 {

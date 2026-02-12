@@ -5,8 +5,7 @@
 #ifndef __LOSING_STREAK_GUARD_MQH__
 #define __LOSING_STREAK_GUARD_MQH__
 
-input int MaxLosingStreak   = 3;   // 连续亏损次数阈值
-input int CooldownBarsAfter = 5;   // 触发后冷却的 bar 数
+// 输入参数 (MaxLosingStreak, CooldownBarsAfter) 由包含此文件的模块提供
 
 class LosingStreakGuard
 {

@@ -8,8 +8,10 @@
 #define __RISK_POSITION_RISK_MQH__ 
 
 #include "TimeStop.mqh"
+#include "../Signal.mqh"
+#include "../Inputs_All.mqh"
 
-input int MaxHoldingBars = 5;   // 最大持仓时间（bar 数）
+// 输入参数定义在 Inputs_All.mqh，此文件不再重复声明
 
 class PositionRisk
 {
@@ -32,22 +34,43 @@ public:
         return PositionSelect(_Symbol);
     }
 
-    bool AllowNewTrade() // 检查是否允许新交易
+    // 无参数版本（兼容旧调用）
+    bool AllowNewTrade()
     {
-        // 单仓模式
-        static datetime last_log_bar = 0;
-        datetime bar_time = iTime(_Symbol, _Period, 0);
+        Signal empty;
+        return AllowNewTrade(empty);
+    }
+    
+    // 检查是否允许新交易（支持加仓信号）
+    bool AllowNewTrade(const Signal &signal)
+    {
+        // 加仓信号：允许（后续由 AddPositionManager 控制）
+        if(signal.IsAddSignal())
+        {
+            // Print("[PositionRisk] Add signal allowed. type=", signal.type); // 减少日志噪音
+            return true;
+        }
+        
+        // 新开仓：单仓模式
         if(HasPosition())
         {
-            if(bar_time != last_log_bar)
+            // 对于SIGNAL_NONE（type=0）不打印日志，减少噪音
+            if(signal.type != SIGNAL_NONE)
             {
-                last_log_bar = bar_time;
-                Print("[PositionRisk] 已有持仓，禁止新开仓");
+                static datetime last_log_time = 0;
+                datetime current_time = TimeCurrent();
+                if(current_time - last_log_time >= 60) // 每分钟最多打印一次
+                {
+                    last_log_time = current_time;
+                    Print("[PositionRisk] 已有持仓，禁止新开仓. signal type=", signal.type);
+                }
             }
             return false;
         }
+        // Print("[PositionRisk] No position, new trade allowed. signal type=", signal.type); // 减少日志噪音
         return true;
     }
+    
     void OnPositionOpened() // 记录持仓时间
     {
         entryTime = TimeCurrent();

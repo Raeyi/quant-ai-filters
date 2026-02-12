@@ -13,6 +13,9 @@
 // 版本管理
 #include "Core/Version.mqh"
 
+// 统一输入参数（必须在其他模块之前引入）
+#include "Core/Inputs_All.mqh"
+
 // 指标
 #include "Indicators/Bollinger.mqh"
 #include "Indicators/ATR.mqh"
@@ -65,31 +68,6 @@ ConfidenceFilter    conf_filter; // 置信度过滤器
 
 StatusPanel status_panel; // 状态面板
 
-//---------------- 面板/模板设置 ----------------
-input bool   ApplyTemplateOnInit = true;      // 附加EA时加载模板
-input bool   ApplyTemplateOnce = true;        // 仅首次加载模板
-input bool   ClearTemplateOnceOnRemove = true; // EA移除时清理“仅一次”标记
-input string TemplateName = "zz_bb_rsi.tpl";  // 模板文件名（Profiles/Templates）
-
-//---------------- 周期设置 ----------------
-input bool            ForceTimeframeOnInit = true;     // 附加EA时自动切换周期
-input ENUM_TIMEFRAMES TargetTimeframe = PERIOD_M5;     // 目标周期
-input bool            AlertOnTimeframeChange = true;   // 周期变化提示
-input bool            DisableOnTimeframeChange = true; // 周期变化后禁用EA
-input bool            ReloadOnTimeframeChange = false; // 周期变化后移除EA
-input bool            AutoRevertTimeframe = false;     // 周期变化后自动切回目标周期
-
-//---------------- 交易提示 ----------------
-input bool AlertOnOrderOpen  = true;   // 开仓提示
-input bool AlertOnOrderClose = true;   // 平仓提示
-input bool AlertOnOrderFail  = true;   // 下单/平仓失败提示
-
-//---------------- 缺口冷却 ----------------
-input int  GapCooldownBars = 5;        // 发现停盘缺口后跳过的bar数量
-
-//---------------- BollMR 版本 ----------------
-input string BollMRVariant = "enhanced"; // base / rsi / time / rsi_time / enhanced / trend_pullback（选择策略变体）
-
 //---------------- 运行时状态 ----------------
 bool g_period_valid = true;
 bool g_period_warned = false;
@@ -129,11 +107,19 @@ void UpdateStatusPanel()
       time_allowed = boll_enhanced.TimeFilterOK();
    else if(g_boll_variant == "time")
       time_allowed = boll_time.TimeFilterOK();
-   // trend_pullback 没有时间过滤，默认允许
+   else if(g_boll_variant == "trend_pullback")
+      time_allowed = trend_pullback.TimeFilterOK();
    string time_reason = "";
    if(!time_allowed)
       time_reason = "交易时间限制";
-   status_panel.Update(risk_pipeline, pos_coord, ea_disabled, reason, time_allowed, time_reason);
+
+   // 统一从 RiskPipeline 获取结构冷却状态
+   bool sc_active = risk_pipeline.IsStructuralCooldownActive();
+   string sc_reason = risk_pipeline.GetStructuralCooldownReason();
+   int sc_remaining = risk_pipeline.GetStructuralCooldownRemaining();
+
+   status_panel.Update(risk_pipeline, pos_coord, ea_disabled, reason, time_allowed, time_reason,
+                       sc_active, sc_reason, sc_remaining);
 }
 
 //---------------- 初始化 ----------------
@@ -152,7 +138,7 @@ int OnInit()
          return INIT_SUCCEEDED;
    }
 
-   if(ApplyTemplateOnInit)
+   if(ApplyTemplateOnInit && !MQLInfoInteger(MQL_TESTER))  // 策略测试器不支持模板
    {
       bool should_apply = true;
       if(ApplyTemplateOnce)
@@ -302,6 +288,10 @@ void OnTick()
    if(!IsNewBar())
       return;
 
+
+   // 通知 RiskPipeline 新K线（用于冷却器计时）
+   risk_pipeline.OnNewBar();
+
    // 缺口检测 + 冷却
    datetime bar_time = iTime(_Symbol, _Period, 0);
    if(g_last_bar_time > 0)
@@ -310,7 +300,7 @@ void OnTick()
       if(period_sec > 0 && (bar_time - g_last_bar_time) > (int)(period_sec * 1.5))
       {
          g_gap_skip_bars_remaining = GapCooldownBars;
-         Print("[EA] Gap detected. Skip next ", g_gap_skip_bars_remaining, " bars.");
+         // Print("[EA] Gap detected. Skip next ", g_gap_skip_bars_remaining, " bars.");
       }
    }
    g_last_bar_time = bar_time;
@@ -318,7 +308,7 @@ void OnTick()
    if(g_gap_skip_bars_remaining > 0)
    {
       g_gap_skip_bars_remaining--;
-      Print("[EA] Gap cooldown active. Remaining bars: ", g_gap_skip_bars_remaining);
+      // Print("[EA] Gap cooldown active. Remaining bars: ", g_gap_skip_bars_remaining);
       UpdateStatusPanel();
       return;
    }
@@ -361,6 +351,15 @@ void OnTick()
 
    pos_coord.SyncFromTerminal(); // 同步仓位状态
 
+   // 更新结构冷却器状态（检查是否可以解除冷却）
+   if(risk_pipeline.IsStructuralCooldownActive() && g_boll_variant == "trend_pullback")
+   {
+      double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double atr = trend_pullback.GetCurrentATR();
+      double structurePrice = trend_pullback.GetCurrentStructurePrice();
+      risk_pipeline.UpdateCooldownState(price, atr, structurePrice);
+   }
+
    Signal signal; // 声明信号变量
    signal = manager.GetSignal(); // 获取策略信号
 
@@ -385,7 +384,7 @@ void OnTick()
       has_event = true;
    }
 
-   // signal_state tracks the last known position state (sticky)
+   // 如果有信号，就更新状态
    if(has_event)
       g_signal_state = g_signal_pos;
 
@@ -449,10 +448,18 @@ void OnTick()
 
    if(signal.type != SIGNAL_NONE && signal.type != SIGNAL_EXIT) // 如果有开仓信号
    {
+      Print("[EA] Processing opening signal. type=", signal.type, " source=", signal.source);
       // 3.1 多策略冲突仲裁：单品种单向一仓
       if(!pos_coord.AllowSignal(signal))
       {
-         Print("[EA] PositionCoordinator rejected signal from ", signal.source);
+         // 每分钟最多打印一次PositionCoordinator拒绝日志
+         static datetime last_pos_coord_reject_log = 0;
+         datetime current_time = TimeCurrent();
+         if(current_time - last_pos_coord_reject_log >= 60)
+         {
+            last_pos_coord_reject_log = current_time;
+            Print("[EA] PositionCoordinator rejected signal from ", signal.source);
+         }
          // 即便有信号，当前有仓位或不允许冲突，就直接退出
       }
       else
@@ -461,7 +468,14 @@ void OnTick()
          double ai_score = 1.0;
          if(!ai_gateway.Pass(signal, ai_score))
          {
-            Print("[EA] AIDecisionGateway rejected signal from ", signal.source);
+            // 每分钟最多打印一次AIDecisionGateway拒绝日志
+            static datetime last_ai_gateway_reject_log = 0;
+            datetime current_time = TimeCurrent();
+            if(current_time - last_ai_gateway_reject_log >= 60)
+            {
+               last_ai_gateway_reject_log = current_time;
+               Print("[EA] AIDecisionGateway rejected signal from ", signal.source);
+            }
          }
          else
          {
@@ -482,7 +496,7 @@ void OnTick()
                   if(AlertOnOrderOpen)
                      Alert("开仓成功: ", _Symbol, " ", (req.direction==TRADE_BUY?"BUY":"SELL"),
                            " vol=", DoubleToString(req.volume,2));
-                  risk_pipeline.OnTradeExecuted();
+                  risk_pipeline.OnTradeExecuted(signal);
                   pos_coord.OnPositionOpened(signal);
                }
                else

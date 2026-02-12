@@ -4,7 +4,7 @@
 #include "../Indicators/Bollinger.mqh"
 #include "../Indicators/ATR.mqh"
 #include "../Core/Strategy.mqh"
-#include "../Core/Inputs_BollMR.mqh"
+#include "../Core/Inputs_all.mqh"
 #include "../Core/TimeFilter_BollMR.mqh"
 
 // 基线 + 时间过滤（不含趋势/RSI/分层退出）

@@ -5,6 +5,171 @@
 - 目标：XAUUSD 小周期策略的可插拔体系（MQL5 实盘 + Python 回测/研究）
 - 结构：策略层 + 过滤层 + 风控层，逐步引入 AI/ML
 
+## 代码架构
+
+### 目录结构
+
+```
+quant-ai-filters/
+├── Ea_run.mq5              # EA 主入口
+├── Core/                   # 核心模块
+│   ├── Signal.mqh          # 信号结构体定义
+│   ├── TradeTypes.mqh      # 交易类型枚举
+│   ├── TradeExecutor.mqh   # 交易执行器
+│   ├── Strategy.mqh        # 策略接口
+│   ├── StrategyManager.mqh # 策略管理器
+│   ├── PositionCoordinator.mqh # 持仓协调器
+│   ├── Inputs_All.mqh      # 统一输入参数
+│   ├── Risk/               # 风控子模块
+│   │   ├── RiskPipeline.mqh    # 风控管道（统一入口）
+│   │   ├── Cooldown.mqh        # 普通冷却器
+│   │   ├── LosingStreakGuard.mqh # 连亏冷却器
+│   │   ├── StructuralCooldown.mqh # 结构冷却器
+│   │   ├── AccountRisk.mqh     # 账户风险控制
+│   │   ├── PositionRisk.mqh    # 仓位风险控制
+│   │   ├── TradeRisk.mqh       # 交易风险控制
+│   │   ├── PositionSizer.mqh   # 仓位计算器
+│   │   ├── AddPositionManager.mqh # 加仓管理器
+│   │   ├── TimeStop.mqh        # 时间止损
+│   │   └── RiskStatus.mqh      # 风控状态
+│   └── UI/
+│       └── StatusPanel.mqh     # 状态面板
+├── Strategies/             # 策略实现
+│   ├── Strategy_BollMR_Base.mqh
+│   ├── Strategy_BollMR_RSI.mqh
+│   ├── Strategy_BollMR_Time.mqh
+│   ├── Strategy_BollMR_RSI_Time.mqh
+│   ├── Strategy_BollMR_enhanced.mqh
+│   └── Strategy_TrendPullback.mqh
+├── Indicators/             # 指标模块
+│   ├── Bollinger.mqh
+│   └── ATR.mqh
+└── Python/                 # Python 回测工具
+```
+
+### 核心模块职责
+
+| 模块 | 职责 | 说明 |
+|------|------|------|
+| `Ea_run.mq5` | 主入口 | 初始化、事件处理、协调各模块 |
+| `Signal` | 信号载体 | 策略产生的交易信号，包含方向、价格、ATR等上下文 |
+| `StrategyManager` | 策略调度 | 遍历已注册策略，获取第一个有效信号 |
+| `IStrategy` | 策略接口 | 定义 `GenerateSignal()` 方法，策略只负责信号生成 |
+| `RiskPipeline` | 风控管道 | 统一管理所有风控检查，是风控的**唯一入口** |
+| `TradeExecutor` | 交易执行 | 封装 MT5 交易 API，执行买卖操作 |
+| `PositionCoordinator` | 持仓协调 | 单品种单向一仓管理 |
+
+### 数据流向
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Ea_run.mq5                              │
+│  (OnTick / OnTimer)                                            │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     StrategyManager                             │
+│  遍历策略 → GenerateSignal() → 返回 Signal                      │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ Signal
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      RiskPipeline                               │
+│  BuildTrade(signal, req)                                        │
+│  ├── AccountRisk: 日内亏损限制                                   │
+│  ├── LosingStreakGuard: 连续止损冷却                             │
+│  ├── Cooldown: 交易后普通冷却                                    │
+│  ├── StructuralCooldown: 结构冷却（假突破保护）                   │
+│  ├── PositionRisk: 持仓检查                                     │
+│  ├── PositionSizer: 仓位计算                                    │
+│  └── TradeRisk: SL/TP 验证                                      │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ TradeRequest
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     TradeExecutor                               │
+│  Execute(req) → 调用 MT5 API 下单                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 风控管道设计
+
+**核心理念**：所有冷却逻辑由 `RiskPipeline` 统一管理，策略只负责信号生成。
+
+```
+RiskPipeline
+├── 普通冷却器 (Cooldown)
+│   └── 每笔交易后强制冷却 N 秒
+├── 连亏冷却器 (LosingStreakGuard)
+│   └── 连续止损 N 次后触发冷却
+├── 结构冷却器 (StructuralCooldown)
+│   ├── 快速止损触发（入场后 N 根 K 线内被止损）
+│   ├── 无动量触发（未达 +M ATR 就反向）
+│   ├── 连续失败触发（同方向连续 N 次 Probe 失败）
+│   └── 二次确认机制（冷却解除后首次入场需更高质量）
+├── 账户风险 (AccountRisk)
+│   └── 日内最大亏损限制
+├── 仓位风险 (PositionRisk)
+│   └── 持仓数量/方向检查
+└── 仓位计算 (PositionSizer)
+    └── 基于风险比例计算手数
+```
+
+### 策略层设计
+
+**策略接口**：
+```cpp
+class IStrategy {
+public:
+    virtual void GenerateSignal(Signal &sig) = 0;
+    virtual void OnNewBar() {}
+};
+```
+
+**策略只负责**：
+1. 判断入场条件是否满足
+2. 填充 `Signal` 结构体（type, price, sl, tp, atr, structure_price）
+3. **不负责**冷却判断、仓位计算、风控检查
+
+**当前策略族**：
+| 策略 | 类型 | 说明 |
+|------|------|------|
+| `Strategy_BollMR_Base` | 均值回归 | BB + ATR 基线 |
+| `Strategy_BollMR_RSI` | 均值回归 | + RSI 过滤 |
+| `Strategy_BollMR_Time` | 均值回归 | + 时间过滤 |
+| `Strategy_BollMR_RSI_Time` | 均值回归 | + RSI + 时间过滤 |
+| `Strategy_BollMR_enhanced` | 均值回归 | 时间 + 趋势 + 分层退出 |
+| `Strategy_TrendPullback` | 趋势跟踪 | M15 方向 + M5 回撤入场 |
+
+### Signal 结构体
+
+```cpp
+struct Signal {
+    SignalType type;        // BUY / SELL / EXIT / ADD_LONG / ADD_SHORT
+    double confidence;      // 置信度 (0.0 ~ 1.0)
+    string source;          // 策略来源
+    datetime time;          // 信号时间
+    double price;           // 触发价格
+    double sl, tp;          // 止损止盈
+    double exit_volume;     // 部分平仓手数
+    double atr;             // ATR（用于结构冷却器）
+    double structure_price; // 结构点价格（用于结构冷却器）
+};
+```
+
+### 扩展指南
+
+**新增策略**：
+1. 继承 `IStrategy` 接口
+2. 实现 `GenerateSignal(Signal &sig)`
+3. 在 `Ea_run.mq5` 中注册到 `StrategyManager`
+
+**新增风控模块**：
+1. 在 `Core/Risk/` 下创建新模块
+2. 在 `RiskPipeline` 中集成
+3. 在 `BuildTrade()` 中添加检查逻辑
+
 ## 执行顺序总览
 
 - M1（Mean Reversion）：先 base 基线验证 → 再小范围参数优化 → 再逐项叠加 enhanced 组件
@@ -211,6 +376,102 @@ TrendPullback.TimeFilter:
 | TrendPullback.Exit | 四层出场参数 |
 | TrendPullback.Timeframe | 周期设置 |
 | TrendPullback.TimeFilter | 时间过滤参数 |
+| TrendPullback.Cooldown | 结构冷却器参数 |
+| TrendPullback.AddPosition | 加仓管理参数 |
+
+### 结构冷却器（StructuralCooldown）
+
+**唯一使命**：阻止"同一结构+同一段行情"被连续假突破反复收割。
+
+```
+核心理念：市场骗过你一次，在给出更高质量证据前不再相信
+```
+
+#### 触发条件
+
+| 条件 | 描述 | 说明 |
+|------|------|------|
+| 快速止损 | 入场后3根K线内被止损 | 100%假突破 |
+| 无动量 | 未达+0.5 ATR就反向 | 缺乏真实需求 |
+| 连续失败 | 同方向连续2次Probe失败 | 结构质量极差 |
+
+#### 冷却期间
+
+**禁止**：新的 Probe、Main、同方向任何入场
+**允许**：结构更新、记录新高/新低、计算新的 Pullback
+
+#### 解除条件
+
+```
+解除 = 时间条件 + 结构条件（二选一）
+```
+
+- **时间条件**：5根K线走完
+- **结构条件A**：形成新Pullback结构（回撤更浅 或 突破点更优）
+- **结构条件B**：价格拉开 ≥ 1 ATR（脱离假突破区域）
+
+#### 二次确认
+
+冷却解除后，只允许"更高质量"的入场：
+
+| 方案 | 条件 |
+|------|------|
+| 方案1（结构） | 突破点 > 上一次假突破点 |
+| 方案2（动量） | 突破后1-2根K线推进 ≥ 0.5 ATR |
+| 方案3（撤回） | 回撤深度 < 上一次回撤深度 |
+
+```
+TrendPullback.Cooldown:
+- TP_EnableCooldown        = true    // 启用冷却器
+- TP_CooldownBars          = 5       // 冷却K线数
+- TP_FastFailBars          = 3       // 快速失败判定
+- TP_MinMomentumATR        = 0.5     // 最小动量要求
+- TP_StructureUpgradeATR   = 1.0     // 结构升级距离
+```
+
+### 加仓管理器（AddPositionManager）
+
+**核心原则**：不是"价格涨了我加"，而是"市场第二次证明我是对的，我才敢更重"
+
+#### 三条铁律
+
+1. 不在浮亏时加仓
+2. 不在第一次突破后立即加仓
+3. 冷却器激活时禁止加仓
+
+#### 加仓条件（必须全部满足）
+
+| 条件 | 要求 |
+|------|------|
+| 主仓验证 | 已达TP1（≥+1.5 ATR）+ 已部分止盈 + SL≥BE |
+| 趋势加速 | 第二次回撤失败（趋势从"成立"到"加速"） |
+| 冷却器 | 未激活 |
+| 风险上限 | 总风险 ≤ 2.5R |
+
+#### 加仓结构
+
+| 加仓 | 触发条件 | 比例 |
+|------|----------|------|
+| 加仓#1 | 第二次回撤失败 | 主仓的40% |
+| 加仓#2 | 连续推进 ≥ 2 ATR | 主仓的25% |
+| 加仓#3 | ❌ 禁止 | — |
+
+#### 独立止损
+
+```
+加仓单止损 = 最近回撤结构点
+❌ 不与主仓共用一个SL
+→ 永远不会因一次加仓把整个趋势单炸掉
+```
+
+```
+TrendPullback.AddPosition:
+- TP_EnableAddPosition = true   // 启用加仓
+- TP_Add1_Ratio        = 0.4    // 第一次加仓比例
+- TP_Add2_Ratio        = 0.25   // 第二次加仓比例
+- TP_Add2_ProfitATR    = 2.0    // 第二次加仓盈利要求
+- TP_MaxTotalRisk      = 2.5    // 最大总风险(R倍数)
+```
 
 ### 实盘注意事项
 

@@ -7,8 +7,9 @@
 
 #include "../Signal.mqh"
 #include "../TradeTypes.mqh"
+#include "../Inputs_All.mqh"
 
-input double InpRiskPercent = 1.0; // 每单风险占权益百分比
+// 输入参数定义在 Inputs_All.mqh，此文件不再重复声明
 
 class PositionSizer
 {

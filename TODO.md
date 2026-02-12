@@ -81,6 +81,18 @@
   - [x] L4 时间止盈：时段结束时平仓
   - [x] Trailing Stop（可选，2.5 ATR）
 - [x] 参数分组（input group: HTF/LTF/Structure/Risk/Exit/Timeframe/TimeFilter）
+- [x] M2.f 结构冷却器（StructuralCooldown.mqh）：
+  - [x] 快速止损检测（N根K线内）
+  - [x] 无动量检测（未达+0.5 ATR就反向）
+  - [x] 连续Probe失败检测
+  - [x] 冷却解除条件：时间+结构升级
+  - [x] 二次确认机制
+- [x] M2.g 加仓管理器（AddPositionManager.mqh）：
+  - [x] 顺势金字塔加仓逻辑
+  - [x] TP1达成+第二次回撤失败触发
+  - [x] 账户风控集成
+  - [x] 总风险上限控制（2.5R）
+  - [x] 独立止损管理
 - [ ] M2.e 扩展：
   - [ ] 成交模型优化
   - [ ] 与 M1 策略组合测试
