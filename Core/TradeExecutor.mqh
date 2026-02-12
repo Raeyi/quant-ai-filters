@@ -129,7 +129,10 @@ public:
               " 开仓价=", DoubleToString(price_open, _Digits),
               " sl=", DoubleToString(sl, _Digits),
               " tp=", DoubleToString(tp, _Digits),
-              " retcode=", trade.ResultRetcode());
+              " retcode=", trade.ResultRetcode(),
+              " 订单=", trade.ResultOrder(),
+              " 成交=", trade.ResultDeal(),
+              " 价格=", DoubleToString(trade.ResultPrice(), _Digits));
         return true;
     }
 
@@ -163,6 +166,8 @@ public:
                   " sl=", DoubleToString(sl, _Digits),
                   " tp=", DoubleToString(tp, _Digits),
                   " retcode=", trade.ResultRetcode(),
+                  " 描述=", trade.ResultRetcodeDescription(),
+                  " 备注=", trade.ResultComment(),
                   " err=", err);
             return false;
         }
@@ -172,7 +177,10 @@ public:
               " 开仓价=", DoubleToString(price_open, _Digits),
               " sl=", DoubleToString(sl, _Digits),
               " tp=", DoubleToString(tp, _Digits),
-              " retcode=", trade.ResultRetcode());
+              " retcode=", trade.ResultRetcode(),
+              " 订单=", trade.ResultOrder(),
+              " 成交=", trade.ResultDeal(),
+              " 价格=", DoubleToString(trade.ResultPrice(), _Digits));
         return true;
     }
 };
