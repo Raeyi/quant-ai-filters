@@ -123,19 +123,33 @@ jobs:
       
       - name: Install MT5 MetaEditor
         run: |
-          Write-Host "Downloading MetaEditor..."
-          $url = "https://download.mql5.com/cdn/web/metaeditor5.exe"
-          $installer = "$env:TEMP\metaeditor5.exe"
-          Invoke-WebRequest -Uri $url -OutFile $installer
+          Write-Host "Downloading MT5 (includes MetaEditor)..."
+          # 使用官方 MT5 下载链接
+          $url = "https://download.mql5.com/cdn/web/mt5setup.exe"
+          $installer = "$env:TEMP\mt5setup.exe"
           
-          Write-Host "Installing MetaEditor (silent)..."
-          Start-Process -FilePath $installer -ArgumentList "/S" -Wait
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          } catch {
+            Write-Host "Primary URL failed, trying alternative..."
+            $url = "https://download.mql5.com/cdn/web/metaeditor5.exe"
+            Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          }
+          
+          Write-Host "Installing MT5 (silent mode)..."
+          # MT5 静默安装参数
+          Start-Process -FilePath $installer -ArgumentList "/S", "/D=C:\MT5" -Wait -NoNewWindow
+          
+          Write-Host "Waiting for installation to complete..."
+          Start-Sleep -Seconds 10
           
           # 查找安装路径
           $possiblePaths = @(
+            "C:\MT5\metaeditor64.exe",
             "C:\Program Files\MetaTrader 5\metaeditor64.exe",
             "C:\Program Files (x86)\MetaTrader 5\metaeditor64.exe",
-            "$env:LOCALAPPDATA\MetaTrader 5\metaeditor64.exe"
+            "$env:LOCALAPPDATA\MetaTrader 5\metaeditor64.exe",
+            "$env:APPDATA\MetaTrader 5\metaeditor64.exe"
           )
           
           foreach ($path in $possiblePaths) {
