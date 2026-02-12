@@ -128,7 +128,7 @@ jobs:
           path: |
             C:\Program Files\MetaTrader 5
             C:\Program Files (x86)\MetaTrader 5
-          key: mt5-installation-v1
+          key: mt5-installation-v2
           restore-keys: |
             mt5-installation-
       
@@ -142,41 +142,54 @@ jobs:
             Write-Host "Found MetaEditor: $($editor.FullName)"
           }
       
-      - name: Download and Install MT5
+      - name: Download MT5 from Release
         if: steps.cache-mt5.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Write-Host "Downloading MT5..."
+          Write-Host "Downloading MT5 from GitHub Release..."
           
-          # 尝试多个官方下载源
-          $urls = @(
-            "https://download.mql5.com/cdn/web/mt5setup.exe",
-            "https://download.mql5.com/cdn/web/mt5clwssetup.exe",
-            "https://download.mql5.com/cdn/web/mt5clws32setup.exe"
-          )
-          
+          # 从仓库的 mt5-assets release 下载
           $installer = "$env:TEMP\mt5setup.exe"
-          $downloaded = $false
           
-          foreach ($url in $urls) {
-            try {
-              Write-Host "Trying: $url"
-              $wc = New-Object System.Net.WebClient
-              $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-              $wc.DownloadFile($url, $installer)
-              if ((Test-Path $installer) -and ((Get-Item $installer).Length -gt 1000000)) {
-                $downloaded = $true
-                Write-Host "Success! Size: $((Get-Item $installer).Length) bytes"
-                break
+          # 尝试从 release 下载
+          try {
+            gh release download mt5-assets --pattern "mt5setup.exe" --dir $env:TEMP --repo ${{ github.repository }}
+            Write-Host "Downloaded from release"
+          } catch {
+            Write-Host "Release not found. Please upload MT5 installer:"
+            Write-Host "1. Download from: https://www.metatrader5.com/en/download"
+            Write-Host "2. Create release named 'mt5-assets'"
+            Write-Host "3. Upload mt5setup.exe to the release"
+            Write-Host ""
+            Write-Host "Alternatively, trying direct download..."
+            
+            # 最后尝试直接下载
+            $urls = @(
+              "https://download.mql5.com/cdn/web/mt5setup.exe",
+              "https://download.mql5.com/cdn/web/mt5clwssetup.exe"
+            )
+            
+            $downloaded = $false
+            foreach ($url in $urls) {
+              try {
+                Write-Host "Trying: $url"
+                $wc = New-Object System.Net.WebClient
+                $wc.Headers.Add("User-Agent", "Mozilla/5.0")
+                $wc.DownloadFile($url, $installer)
+                if ((Test-Path $installer) -and ((Get-Item $installer).Length -gt 1000000)) {
+                  $downloaded = $true
+                  break
+                }
+              } catch {
+                Write-Host "Failed: $($_.Exception.Message)"
               }
-            } catch {
-              Write-Host "Failed: $($_.Exception.Message)"
             }
-          }
-          
-          if (-not $downloaded) {
-            Write-Host "All downloads failed. Please upload MT5 installer to a release."
-            Write-Host "You can download MT5 from: https://www.metatrader5.com/en/download"
-            exit 1
+            
+            if (-not $downloaded) {
+              Write-Host "ERROR: Could not download MT5. Please upload to release."
+              exit 1
+            }
           }
           
           Write-Host "Installing MT5..."
