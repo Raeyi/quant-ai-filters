@@ -57,7 +57,7 @@
 
 - [ ] 执行顺序：先 M15 方向框架 → 再 M5 回撤入场 → 再小范围优化 → 再过滤/风控叠加
 - [x] M2.0 基础设施：
-  - [ ] Python 策略框架（TrendPullbackStrategy）
+  - [x] Python 策略框架（TrendPullbackStrategy）
   - [x] MQL5 策略模板（Strategy_TrendPullback.mqh）
   - [x] 多周期数据支持（M5 + M15）
 - [x] M2.a M15 方向判断：
