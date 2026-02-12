@@ -66,15 +66,22 @@
   - [x] VWAP 辅助趋势确认
 - [x] M2.b M5 回撤入场：
   - [x] 回撤到 EMA20/VWAP 价值区
-  - [x] 小结构确认（前高/前低突破）
-  - [x] K线形态确认（小实体/反包/影线）
-  - [x] 入场信号触发（LongSignal/ShortSignal）
-- [x] M2.c 统一 SL/TP：
-  - [x] ATR 1.0 止损
-  - [x] ATR 1.5 止盈（可配置）
-  - [x] 结构破坏出场信号
-- [x] 参数分组（input group: HTF/LTF/Structure/Risk/Timeframe）
-- [ ] M2.d 扩展：
+  - [x] 小结构确认（Lower High / Higher Low）
+  - [x] K线形态确认（小实体+方向性信号）
+  - [x] 回撤深度限制（0.618 ATR）
+  - [x] Ask/Bid 正确使用（多头用Ask，空头用Bid）
+- [x] M2.c 时间过滤：
+  - [x] 复用 BollMR session 机制（asia/europe/us/overlap）
+  - [x] 默认美盘+重叠时段（us,overlap）
+  - [x] 时段结束时间止盈
+- [x] M2.d 四层出场设计：
+  - [x] L1 防御止损：结构破坏 + 初始SL
+  - [x] L2 最小兑现：+1.5 ATR 部分平仓（30-40%）
+  - [x] L3 趋势持有：EMA20/VWAP 未跌破则持有
+  - [x] L4 时间止盈：时段结束时平仓
+  - [x] Trailing Stop（可选，2.5 ATR）
+- [x] 参数分组（input group: HTF/LTF/Structure/Risk/Exit/Timeframe/TimeFilter）
+- [ ] M2.e 扩展：
   - [ ] 成交模型优化
   - [ ] 与 M1 策略组合测试
 
