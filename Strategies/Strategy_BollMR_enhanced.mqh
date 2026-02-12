@@ -5,8 +5,8 @@
 #include "../Indicators/ATR.mqh"
 #include "../Indicators/MA.mqh"
 #include "../Core/Strategy.mqh"
-#include "../Core/Inputs_BollMR.mqh"
 #include "../Core/TimeFilter_BollMR.mqh"
+#include "../Core/Inputs_all.mqh"
 
 class Strategy_BollMR : public IStrategy
 {

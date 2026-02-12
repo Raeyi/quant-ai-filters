@@ -1,0 +1,113 @@
+;=====================================================================
+; quant-ai-filters 优化参数配置
+; 回测时间: 2025-06 至 2026-01 (8个月)
+; 优化结果: Combo 收益 +553.74, 回撤 -3.46%
+;=====================================================================
+
+;--- 策略选择 ---
+BollMRVariant=combo
+
+;--- 公用设置 ---
+ApplyTemplateOnInit=1
+ApplyTemplateOnce=1
+ClearTemplateOnceOnRemove=1
+TemplateName=zz_bb_rsi.tpl
+ForceTimeframeOnInit=1
+TargetTimeframe=PERIOD_M5
+AlertOnTimeframeChange=1
+DisableOnTimeframeChange=1
+ReloadOnTimeframeChange=0
+AutoRevertTimeframe=0
+AlertOnOrderOpen=1
+AlertOnOrderClose=1
+AlertOnOrderFail=1
+GapCooldownBars=5
+
+;--- 风控设置 ---
+InpRiskPercent=1.0
+MaxHoldingBars=5
+CooldownSeconds=60
+MaxLosingStreak=3
+CooldownBarsAfter=5
+MAX_DAILY_LOSS_PERCENT=5.0
+
+;--- BollMR 布林带 (优化参数) ---
+BollMR_BollPeriod=18
+BollMR_BollDev=2.0
+BollMR_ATRPeriod=14
+BollMR_StructATRSL=0.8
+BollMR_VolATRSL=2.0
+BollMR_ATRVolLimit=1.5
+
+;--- BollMR RSI ---
+BollMR_RSIPeriod=14
+BollMR_RSIOverbought=70.0
+BollMR_RSIOversold=30.0
+
+;--- BollMR 时间过滤 (优化: 2-20点) ---
+BollMR_TimeMode=session
+BollMR_Session=europe,us
+BollMR_ServerUTCOffset=2
+BollMR_UseDST=0
+BollMR_DSTShiftHours=1
+BollMR_StartHour=2
+BollMR_EndHour=20
+
+;--- BollMR 增强 ---
+BollMR_ShortestClosingTime=10
+BollMR_MidATRTP=0.2
+BollMR_MidATRTP2=0.5
+BollMR_PartialExit1=0.5
+BollMR_PartialExit2=0.25
+BollMR_UplowATRTP=0.1
+BollMR_MAPeriod=50
+BollMR_EntryMode=A
+BollMR_LogSignalDetails=1
+BollMR_Slope_Abs=150
+
+;--- TrendPullback 高时间框架 ---
+TP_HTF=PERIOD_M15
+TP_EMA50_Period=50
+TP_EMA200_Period=200
+TP_UseVWAP_HTF=1
+
+;--- TrendPullback 低时间框架 ---
+TP_LTF=PERIOD_M5
+TP_EMA20_Period=20
+TP_UseVWAP_LTF=1
+TP_ValueZoneATR=0.5
+TP_PullbackBars=5
+
+;--- TrendPullback 结构分析 (优化: 浅回撤) ---
+TP_Structure_Lookback=20
+TP_RequireBreak=1
+TP_PullbackDepthATR=0.5
+
+;--- TrendPullback 止损止盈 ---
+TP_ATR_Period=14
+TP_ATR_SL_Multi=1.5
+TP_PartialExit1_ATR=1.5
+TP_PartialExit1_Ratio=0.35
+TP_BE_OffsetATR=-0.2
+TP_TrailATR_Multi=2.5
+TP_EnableTrailing=1
+
+;--- TrendPullback 时间过滤 (优化: 欧美盘) ---
+TP_Session=europe,us,overlap
+TP_TimeFilterEntry=1
+TP_TimeExitEndSession=1
+
+;--- TrendPullback 冷却机制 ---
+TP_EnableCooldown=1
+TP_CooldownBars=3
+TP_MaxCooldownBars=12
+TP_FastFailBars=5
+TP_MinMomentumATR=0.5
+TP_StructureUpgradeATR=0.5
+
+;--- TrendPullback 加仓 ---
+TP_EnableAddPosition=1
+TP_Add1_Ratio=0.4
+TP_Add2_Ratio=0.25
+TP_Add2_ProfitATR=2.0
+TP_MaxTotalRisk=2.5

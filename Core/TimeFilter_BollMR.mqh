@@ -1,7 +1,7 @@
 #ifndef __TIMEFILTER_BOLLMR_MQH__
 #define __TIMEFILTER_BOLLMR_MQH__
 
-#include "Inputs_BollMR.mqh"
+#include "../Core/Inputs_all.mqh"
 
 // 将小时归一化到 0-23
 int BollMR_NormalizeHour(int hour)

@@ -5,7 +5,7 @@
 #include "../Indicators/ATR.mqh"
 #include "../Indicators/RSI.mqh"
 #include "../Core/Strategy.mqh"
-#include "../Core/Inputs_BollMR.mqh"
+#include "../Core/Inputs_all.mqh"
 #include "../Core/TimeFilter_BollMR.mqh"
 
 // Base + RSI + Time filter (no trend / no layered exits)

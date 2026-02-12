@@ -56,23 +56,49 @@
 ## 里程碑 M2: Trend Pullback Family v1【当前重点】
 
 - [ ] 执行顺序：先 M15 方向框架 → 再 M5 回撤入场 → 再小范围优化 → 再过滤/风控叠加
-- [ ] M2.0 基础设施：
-  - [ ] Python 策略框架（TrendPullbackStrategy）
-  - [ ] MQL5 策略模板（Strategy_TrendPullback.mqh）
-  - [ ] 多周期数据支持（M5 + M15）
-- [ ] M2.a M15 方向判断：
-  - [ ] EMA50/EMA200 金叉死叉
-  - [ ] 趋势状态定义（BULL/BEAR/FLAT）
-- [ ] M2.b M5 回撤入场：
-  - [ ] 回撤到 EMA20/VWAP
-  - [ ] 小结构确认（前高/前低突破）
-  - [ ] 入场信号触发
-- [ ] M2.c 统一 SL/TP：
-  - [ ] ATR 1.0 止损
-  - [ ] ATR 1.5-2.0 止盈
-- [ ] M2.d 扩展：
-  - [ ] 成交模型优化
-  - [ ] 与 M1 策略组合测试
+- [x] M2.0 基础设施：
+  - [x] Python 策略框架（TrendPullbackStrategy）
+  - [x] MQL5 策略模板（Strategy_TrendPullback.mqh）
+  - [x] 多周期数据支持（M5 + M15）
+- [x] M2.a M15 方向判断：
+  - [x] EMA50/EMA200 金叉死叉
+  - [x] 趋势状态定义（BULL/BEAR/FLAT）
+  - [x] VWAP 辅助趋势确认
+- [x] M2.b M5 回撤入场：
+  - [x] 回撤到 EMA20/VWAP 价值区
+  - [x] 小结构确认（Lower High / Higher Low）
+  - [x] K线形态确认（小实体+方向性信号）
+  - [x] 回撤深度限制（0.618 ATR）
+  - [x] Ask/Bid 正确使用（多头用Ask，空头用Bid）
+- [x] M2.c 时间过滤：
+  - [x] 复用 BollMR session 机制（asia/europe/us/overlap）
+  - [x] 默认美盘+重叠时段（us,overlap）
+  - [x] 时段结束时间止盈
+- [x] M2.d 四层出场设计：
+  - [x] L1 防御止损：结构破坏 + 初始SL
+  - [x] L2 最小兑现：+1.5 ATR 部分平仓（30-40%）
+  - [x] L3 趋势持有：EMA20/VWAP 未跌破则持有
+  - [x] L4 时间止盈：时段结束时平仓
+  - [x] Trailing Stop（可选，2.5 ATR）
+- [x] 参数分组（input group: HTF/LTF/Structure/Risk/Exit/Timeframe/TimeFilter）
+- [x] M2.f 结构冷却器（StructuralCooldown.mqh）：
+  - [x] 快速止损检测（N根K线内）
+  - [x] 无动量检测（未达+0.5 ATR就反向）
+  - [x] 连续Probe失败检测
+  - [x] 冷却解除条件：时间+结构升级
+  - [x] 二次确认机制
+- [x] M2.g 加仓管理器（AddPositionManager.mqh）：
+  - [x] 顺势金字塔加仓逻辑
+  - [x] TP1达成+第二次回撤失败触发
+  - [x] 账户风控集成
+  - [x] 总风险上限控制（2.5R）
+  - [x] 独立止损管理
+- [x] M2.e 扩展：
+  - [x] 组合策略（Strategy_Combo.mqh）- 支持 M1+M2 同时运行
+  - [x] Python 多策略回测脚本（backtest_combo.py）
+  - [x] 参数优化（param_optimize.py）
+  - [x] 优化参数同步到 MT5
+  - [ ] 成交模型优化（可选，低频策略影响小）
 
 ## 里程碑 M3: XAUUSD Alpha（美盘结构策略）
 

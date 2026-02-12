@@ -56,21 +56,49 @@ public:
    // 新信号到来时，检查是否允许这个信号介入
    bool AllowSignal(const Signal &signal)
    {
-      // 没有持仓，任何方向都允许
+      // 对于SIGNAL_NONE（type=0）不打印日志，减少噪音
+      if(signal.type == SIGNAL_NONE)
+      {
+         return false;
+      }
+      
+      // 没有持仓，允许新开仓信号
       if(current_side == POS_NONE)
+      {
+         Print("[PositionCoordinator] No position, allowing signal. type=", signal.type, " source=", signal.source);
          return true;
+      }
 
-      // 已经有仓位 —— 保守版：直接拒绝所有新信号
-      // 后续你想做“反手/加仓”，就在这里改策略
+      // 加仓信号：检查方向是否一致
+      if(signal.type == SIGNAL_ADD_LONG && current_side == POS_LONG)
+      {
+         Print("[PositionCoordinator] Add long signal allowed. type=", signal.type, " source=", signal.source);
+         return true;
+      }
+      if(signal.type == SIGNAL_ADD_SHORT && current_side == POS_SHORT)
+      {
+         Print("[PositionCoordinator] Add short signal allowed. type=", signal.type, " source=", signal.source);
+         return true;
+      }
+
+      // 新开仓信号：已有仓位时拒绝
+      // 每分钟最多打印一次拒绝日志
+      static datetime last_reject_log = 0;
+      datetime current_time = TimeCurrent();
+      if(current_time - last_reject_log >= 60)
+      {
+         last_reject_log = current_time;
+         Print("[PositionCoordinator] Position exists, rejecting new trade signal. type=", signal.type, " source=", signal.source, " current_side=", current_side);
+      }
       return false;
    }
 
    // 在开仓成功后调用，记录仓位状态
    void OnPositionOpened(const Signal &signal)
    {
-      if(signal.type == SIGNAL_BUY)
+      if(signal.type == SIGNAL_BUY || signal.type == SIGNAL_ADD_LONG)
          current_side = POS_LONG;
-      else if(signal.type == SIGNAL_SELL)
+      else if(signal.type == SIGNAL_SELL || signal.type == SIGNAL_ADD_SHORT)
          current_side = POS_SHORT;
       else
          current_side = POS_NONE;

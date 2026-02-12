@@ -44,13 +44,13 @@ public:
             continue;
          
          Signal sig;
-         sig = strategies[i].GenerateSignal(sig);
+         strategies[i].GenerateSignal(sig);  // 直接通过引用修改 sig
          
-          if(sig.type != SIGNAL_NONE)
+         if(sig.type != SIGNAL_NONE)
          {
-               Print("[StrategyManager] Signal from strategy ", sig.source,
-                     " type=", sig.type);
-               return sig;
+            Print("[StrategyManager] Signal from strategy ", sig.source,
+                  " type=", sig.type);
+            return sig;
          }
       }
       return Signal(); // NONE

@@ -13,10 +13,15 @@ class TradeRisk
 public:
     bool Validate(const Signal &signal, TradeRequest &req)
     {
-        // 方向
-        if(signal.type == SIGNAL_BUY)
+        // 对于SIGNAL_NONE（type=0）不打印日志，减少噪音
+        if(signal.type != SIGNAL_NONE)
+        {
+            Print("[TradeRisk] Validate signal type=", signal.type, " source=", signal.source);
+        }
+        // 方向（支持加仓信号）
+        if(signal.type == SIGNAL_BUY || signal.type == SIGNAL_ADD_LONG)
             req.direction = TRADE_BUY;
-        else if(signal.type == SIGNAL_SELL)
+        else if(signal.type == SIGNAL_SELL || signal.type == SIGNAL_ADD_SHORT)
             req.direction = TRADE_SELL;
         else
             return false;

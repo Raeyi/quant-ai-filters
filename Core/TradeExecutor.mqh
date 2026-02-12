@@ -30,10 +30,21 @@ private:
 public:
     bool Execute(const TradeRequest &req, const string &source)
     {
+        // 检查持仓冲突：同方向可以加仓，不同方向拒绝
         if(PositionSelect(_Symbol))
         {
-            Print("[", source, "] 下单被拒：已有持仓");
-            return false;
+            long pos_type = PositionGetInteger(POSITION_TYPE);
+            bool has_long = (pos_type == POSITION_TYPE_BUY);
+            bool has_short = (pos_type == POSITION_TYPE_SELL);
+            
+            // 方向冲突检查
+            if((req.direction == TRADE_BUY && has_short) ||
+               (req.direction == TRADE_SELL && has_long))
+            {
+                Print("[", source, "] 下单被拒：持仓方向冲突");
+                return false;
+            }
+            // 同方向 = 加仓，允许继续
         }
         
         if(req.direction == TRADE_BUY)
@@ -129,7 +140,10 @@ public:
               " 开仓价=", DoubleToString(price_open, _Digits),
               " sl=", DoubleToString(sl, _Digits),
               " tp=", DoubleToString(tp, _Digits),
-              " retcode=", trade.ResultRetcode());
+              " retcode=", trade.ResultRetcode(),
+              " 订单=", trade.ResultOrder(),
+              " 成交=", trade.ResultDeal(),
+              " 价格=", DoubleToString(trade.ResultPrice(), _Digits));
         return true;
     }
 
@@ -163,6 +177,8 @@ public:
                   " sl=", DoubleToString(sl, _Digits),
                   " tp=", DoubleToString(tp, _Digits),
                   " retcode=", trade.ResultRetcode(),
+                  " 描述=", trade.ResultRetcodeDescription(),
+                  " 备注=", trade.ResultComment(),
                   " err=", err);
             return false;
         }
@@ -172,7 +188,10 @@ public:
               " 开仓价=", DoubleToString(price_open, _Digits),
               " sl=", DoubleToString(sl, _Digits),
               " tp=", DoubleToString(tp, _Digits),
-              " retcode=", trade.ResultRetcode());
+              " retcode=", trade.ResultRetcode(),
+              " 订单=", trade.ResultOrder(),
+              " 成交=", trade.ResultDeal(),
+              " 价格=", DoubleToString(trade.ResultPrice(), _Digits));
         return true;
     }
 };
