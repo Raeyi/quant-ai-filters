@@ -95,8 +95,8 @@
   - [x] 独立止损管理
 - [x] M2.e 扩展：
   - [x] 组合策略（Strategy_Combo.mqh）- 支持 M1+M2 同时运行
+  - [x] Python 多策略回测脚本（backtest_combo.py）
   - [ ] 成交模型优化（可选，低频策略影响小）
-  - [ ] Python 多策略回测脚本（与 MT5 对齐验证）
 
 ## 里程碑 M3: XAUUSD Alpha（美盘结构策略）
 
