@@ -135,11 +135,11 @@ jobs:
         run: |
           Write-Host "Downloading MT5 portable from release..."
           
-          $zipPath = "$env:TEMP\mt5-portable.zip"
+          $zipPath = "$env:TEMP\ECMarketsMetaTrader5.zip"
           $mt5Path = "C:\MT5"
           
           # 从 release 下载
-          gh release download mt5-assets --pattern "mt5-portable.zip" --dir $env:TEMP --repo ${{ github.repository }}
+          gh release download mt5-assets --pattern "ECMarketsMetaTrader5.zip" --dir $env:TEMP --repo ${{ github.repository }}
           
           Write-Host "Extracting MT5..."
           Expand-Archive -Path $zipPath -DestinationPath $mt5Path -Force
