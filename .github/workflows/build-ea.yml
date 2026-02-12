@@ -123,33 +123,57 @@ jobs:
       
       - name: Install MT5 MetaEditor
         run: |
-          Write-Host "Downloading MT5 (includes MetaEditor)..."
-          # 使用官方 MT5 下载链接
-          $url = "https://download.mql5.com/cdn/web/mt5setup.exe"
-          $installer = "$env:TEMP\mt5setup.exe"
+          Write-Host "Installing MT5 via direct download..."
           
-          try {
-            Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-          } catch {
-            Write-Host "Primary URL failed, trying alternative..."
-            $url = "https://download.mql5.com/cdn/web/metaeditor5.exe"
-            Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          # 尝试多个下载源
+          $urls = @(
+            "https://download.mql5.com/cdn/web/mt5setup.exe",
+            "https://download.mql5.com/cdn/web/mt5clientsetup.exe",
+            "https://metaquotes.net/files/mt5/mt5setup.exe"
+          )
+          
+          $installer = "$env:TEMP\mt5setup.exe"
+          $downloaded = $false
+          
+          foreach ($url in $urls) {
+            try {
+              Write-Host "Trying: $url"
+              Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing -TimeoutSec 60
+              if (Test-Path $installer) {
+                $downloaded = $true
+                Write-Host "Download successful from: $url"
+                break
+              }
+            } catch {
+              Write-Host "Failed: $($_.Exception.Message)"
+              continue
+            }
           }
           
-          Write-Host "Installing MT5 (silent mode)..."
-          # MT5 静默安装参数
-          Start-Process -FilePath $installer -ArgumentList "/S", "/D=C:\MT5" -Wait -NoNewWindow
+          if (-not $downloaded) {
+            Write-Host "All download attempts failed. Trying Chocolatey..."
+            # 使用 Chocolatey 作为备选
+            choco install metatrader5 -y
+            $chocoPath = "C:\Program Files\MetaTrader 5\metaeditor64.exe"
+            if (Test-Path $chocoPath) {
+              echo "MT5_EDITOR=$chocoPath" >> $env:GITHUB_ENV
+              return
+            }
+          }
           
-          Write-Host "Waiting for installation to complete..."
-          Start-Sleep -Seconds 10
+          if ($downloaded) {
+            Write-Host "Installing MT5..."
+            Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow
+            Start-Sleep -Seconds 10
+          }
           
           # 查找安装路径
           $possiblePaths = @(
-            "C:\MT5\metaeditor64.exe",
             "C:\Program Files\MetaTrader 5\metaeditor64.exe",
             "C:\Program Files (x86)\MetaTrader 5\metaeditor64.exe",
-            "$env:LOCALAPPDATA\MetaTrader 5\metaeditor64.exe",
-            "$env:APPDATA\MetaTrader 5\metaeditor64.exe"
+            "${env:LOCALAPPDATA}\MetaTrader 5\metaeditor64.exe",
+            "${env:APPDATA}\MetaTrader 5\metaeditor64.exe",
+            "C:\MT5\metaeditor64.exe"
           )
           
           foreach ($path in $possiblePaths) {
