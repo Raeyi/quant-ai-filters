@@ -12,11 +12,7 @@
 name: Build EA & Release
 
 on:
-  push:
-    branches:
-      - EA_2.0.0
-    # 只在 merge commit 时触发（里程碑合并）
-    # 或者手动触发
+  # 只在手动触发时运行，避免循环触发
   workflow_dispatch:
     inputs:
       version_bump:
