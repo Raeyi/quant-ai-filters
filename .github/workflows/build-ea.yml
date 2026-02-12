@@ -123,13 +123,44 @@ jobs:
       
       - name: Install MT5 MetaEditor
         run: |
-          Write-Host "Installing MT5 via Chocolatey..."
+          Write-Host "Downloading MT5 portable..."
           
-          # 直接使用 Chocolatey 安装
-          choco install metatrader5 -y --force
+          # 使用官方下载链接
+          $url = "https://download.mql5.com/cdn/web/mt5setup.exe"
+          $installer = "$env:TEMP\mt5setup.exe"
           
-          Write-Host "Waiting for installation..."
-          Start-Sleep -Seconds 5
+          # 下载安装包
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $webClient = New-Object System.Net.WebClient
+          
+          try {
+            $webClient.DownloadFile($url, $installer)
+            Write-Host "Download completed, size: $((Get-Item $installer).Length) bytes"
+          } catch {
+            Write-Host "Download failed: $($_.Exception.Message)"
+            Write-Host "Trying alternative method..."
+            # 使用 Invoke-WebRequest 作为备选
+            Invoke-WebRequest -Uri $url -OutFile $installer -UserAgent "Mozilla/5.0"
+          }
+          
+          # 验证文件
+          if (-not (Test-Path $installer)) {
+            Write-Host "ERROR: Installer not found"
+            exit 1
+          }
+          
+          $fileSize = (Get-Item $installer).Length
+          if ($fileSize -lt 1000000) {
+            Write-Host "ERROR: Installer file too small ($fileSize bytes), likely corrupted"
+            exit 1
+          }
+          
+          Write-Host "Installing MT5..."
+          # 运行安装程序
+          $process = Start-Process -FilePath $installer -ArgumentList "/auto" -PassThru -Wait
+          Write-Host "Installation exit code: $($process.ExitCode)"
+          
+          Start-Sleep -Seconds 10
           
           # 查找安装路径
           $possiblePaths = @(
