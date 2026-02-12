@@ -33,6 +33,7 @@
 #include "Strategies/Strategy_BollMR_Time.mqh"
 #include "Strategies/Strategy_BollMR_RSI_Time.mqh"
 #include "Strategies/Strategy_TrendPullback.mqh"
+#include "Strategies/Strategy_Combo.mqh"
 
 // 执行 & 风控
 #include "Core/TradeExecutor.mqh"
@@ -58,6 +59,7 @@ Strategy_BollMR_RSI  boll_rsi;     // Bollinger 均值回归策略（RSI 过滤�
 Strategy_BollMR_Time boll_time;    // Bollinger 均值回归策略（时间过滤）
 Strategy_BollMR_RSI_Time boll_rsi_time; // Bollinger 均值回归策略（RSI + 时间过滤）
 Strategy_TrendPullback trend_pullback; // 趋势回撤策略 (M2)
+Strategy_Combo combo;                  // 组合策略 (M1+M2)
 
 TradeExecutor       executor; // 交易执行器
 RiskPipeline        risk_pipeline; // 风控管道
@@ -109,6 +111,8 @@ void UpdateStatusPanel()
       time_allowed = boll_time.TimeFilterOK();
    else if(g_boll_variant == "trend_pullback")
       time_allowed = trend_pullback.TimeFilterOK();
+   else if(g_boll_variant == "combo")
+      time_allowed = combo.TimeFilterOK();
    string time_reason = "";
    if(!time_allowed)
       time_reason = "交易时间限制";
@@ -181,6 +185,8 @@ int OnInit()
       manager.Add(&boll_rsi_time);
    else if(g_boll_variant == "trend_pullback")
       manager.Add(&trend_pullback);
+   else if(g_boll_variant == "combo")
+      manager.Add(&combo);
    else
       manager.Add(&boll_enhanced);
 
@@ -222,6 +228,14 @@ int OnInit()
         if(!trend_pullback.Init())
         {
             Print("Failed to initialize TrendPullback strategy");
+            return INIT_FAILED;
+        }
+    }
+    else if(g_boll_variant == "combo")
+    {
+        if(!combo.Init())
+        {
+            Print("Failed to initialize Combo strategy");
             return INIT_FAILED;
         }
     }
@@ -339,6 +353,11 @@ void OnTick()
       if(!trend_pullback.UpdateIndicators())
          return;
    }
+   else if(g_boll_variant == "combo")
+   {
+      if(!combo.UpdateIndicators())
+         return;
+   }
    else
    {
       if(!boll_enhanced.UpdateIndicators())
@@ -352,12 +371,25 @@ void OnTick()
    pos_coord.SyncFromTerminal(); // 同步仓位状态
 
    // 更新结构冷却器状态（检查是否可以解除冷却）
-   if(risk_pipeline.IsStructuralCooldownActive() && g_boll_variant == "trend_pullback")
+   if(risk_pipeline.IsStructuralCooldownActive())
    {
       double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double atr = trend_pullback.GetCurrentATR();
-      double structurePrice = trend_pullback.GetCurrentStructurePrice();
-      risk_pipeline.UpdateCooldownState(price, atr, structurePrice);
+      double atr = 0;
+      double structurePrice = 0;
+      
+      if(g_boll_variant == "trend_pullback")
+      {
+         atr = trend_pullback.GetCurrentATR();
+         structurePrice = trend_pullback.GetCurrentStructurePrice();
+      }
+      else if(g_boll_variant == "combo")
+      {
+         atr = combo.GetTrendPullback().GetCurrentATR();
+         structurePrice = combo.GetTrendPullback().GetCurrentStructurePrice();
+      }
+      
+      if(atr > 0)
+         risk_pipeline.UpdateCooldownState(price, atr, structurePrice);
    }
 
    Signal signal; // 声明信号变量

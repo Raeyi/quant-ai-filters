@@ -13,7 +13,7 @@ input group "========== 公用设置 =========="
 
 //--- 策略选择 ---
 input group "策略选择"
-input string BollMRVariant = "trend_pullback"; // 策略变体 (base/rsi/time/rsi_time/enhanced/trend_pullback)
+input string BollMRVariant = "trend_pullback"; // 策略变体 (base/rsi/time/rsi_time/enhanced/trend_pullback/combo)
 
 //--- 面板/模板 ---
 input group "面板与模板"
