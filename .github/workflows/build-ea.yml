@@ -126,7 +126,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\MT5
-          key: mt5-portable-v1
+          key: mt5-portable-v2
 
       - name: Download MT5 Portable
         if: steps.cache-mt5.outputs.cache-hit != 'true'
@@ -148,13 +148,13 @@ jobs:
 
       - name: Setup MT5 Editor Path
         run: |
-          $editor = "C:\MT5\MetaEditor64.exe"
+          $editor = "C:\MT5\EC Markets MetaTrader 5\MetaEditor64.exe"
           if (Test-Path $editor) {
             Write-Host "Found MetaEditor: $editor"
             echo "MT5_EDITOR=$editor" >> $env:GITHUB_ENV
           } else {
             Write-Host "ERROR: MetaEditor not found"
-            Get-ChildItem "C:\MT5" -Recurse
+            Get-ChildItem "C:\MT5" -Recurse -Filter "*.exe"
             exit 1
           }
       
