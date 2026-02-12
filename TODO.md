@@ -96,6 +96,8 @@
 - [x] M2.e 扩展：
   - [x] 组合策略（Strategy_Combo.mqh）- 支持 M1+M2 同时运行
   - [x] Python 多策略回测脚本（backtest_combo.py）
+  - [x] 参数优化（param_optimize.py）
+  - [x] 优化参数同步到 MT5
   - [ ] 成交模型优化（可选，低频策略影响小）
 
 ## 里程碑 M3: XAUUSD Alpha（美盘结构策略）

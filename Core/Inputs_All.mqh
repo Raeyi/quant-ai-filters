@@ -73,7 +73,7 @@ input group "========== BollMR 策略 =========="
 
 //--- 布林带基础参数 ---
 input group "BollMR.布林带"
-input int    BollMR_BollPeriod  = 20;  // 布林带周期
+input int    BollMR_BollPeriod  = 18;  // 布林带周期 (优化: 20→18)
 input double BollMR_BollDev     = 2.0; // 布林带标准差
 input int    BollMR_ATRPeriod   = 14;  // ATR 周期
 input double BollMR_StructATRSL = 0.8; // 结构止损 ATR 倍数
@@ -89,12 +89,12 @@ input double BollMR_RSIOversold   = 30.0; // RSI 超卖阈值 (做多过滤)
 //--- 时间过滤 ---
 input group "BollMR.时间过滤"
 input string BollMR_TimeMode = "session";   // 时间模式: session/custom
-input string BollMR_Session  = "overlap";   // 交易时段 (asia/europe/us/overlap/europe+us)
+input string BollMR_Session  = "europe,us"; // 交易时段 (优化: overlap→europe,us 覆盖2-20点)
 input int    BollMR_ServerUTCOffset = 2;    // MT5 服务器 UTC 偏移 (小时)
 input bool   BollMR_UseDST = false;         // 手动夏令时开关
 input int    BollMR_DSTShiftHours = 1;      // DST 平移小时数
-input int    BollMR_StartHour = 8;          // 自定义开始时间 (北京时间)
-input int    BollMR_EndHour   = 16;         // 自定义结束时间 (北京时间)
+input int    BollMR_StartHour = 2;          // 自定义开始时间 (北京时间, 优化: 8→2)
+input int    BollMR_EndHour   = 20;         // 自定义结束时间 (北京时间, 优化: 16→20)
 
 //--- 增强参数 ---
 input group "BollMR.增强参数"
@@ -134,7 +134,7 @@ input int   TP_PullbackBars     = 5;           // 回撤确认K线数
 input group "TP.结构分析"
 input int   TP_Structure_Lookback = 20;        // 结构回看周期
 input bool  TP_RequireBreak     = true;        // 要求突破回撤结构点
-input double TP_PullbackDepthATR = 0.618;      // 回撤深度上限 (ATR倍数)
+input double TP_PullbackDepthATR = 0.5;        // 回撤深度上限 (ATR倍数, 优化: 0.618→0.5)
 
 //--- 止损止盈 ---
 input group "TP.止损止盈"
@@ -148,7 +148,7 @@ input bool  TP_EnableTrailing     = true;      // 启用 Trailing Stop
 
 //--- 时间过滤 ---
 input group "TP.时间过滤"
-input string TP_Session          = "us,overlap"; // 交易时段
+input string TP_Session          = "europe,us,overlap"; // 交易时段 (优化: 扩展至欧美盘)
 input bool   TP_TimeFilterEntry  = true;         // 入场时间过滤
 input bool   TP_TimeExitEndSession = true;       // 时段结束时平仓
 

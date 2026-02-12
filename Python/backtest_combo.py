@@ -93,17 +93,23 @@ def main() -> None:
     initial_cash = args.initial_cash or settings.broker.initial_cash
     trade_lot = settings.broker.trade_lot
     
-    # BollMR 参数（亚欧盘）
+    # BollMR 参数（优化后）
     boll_params = BollMeanReversionParams(
         logic_mode="enhanced",
         allowed_start_hour=args.boll_start_hour,
         allowed_end_hour=args.boll_end_hour,
+        boll_period=18,         # 优化参数
+        boll_dev=2.0,           # 优化参数
+        entry_mode="A",         # 入场模式
+        struct_atr_sl=0.8,
+        bool_mid_atr_tp=0.2,
         point=point,
     )
     
-    # TrendPullback 参数（欧美盘）
+    # TrendPullback 参数（优化后）
     tp_params = TrendPullbackParams(
         session=args.tp_session,
+        pullback_depth_atr=0.5,  # 优化参数：浅回撤
         point=point,
     )
     
