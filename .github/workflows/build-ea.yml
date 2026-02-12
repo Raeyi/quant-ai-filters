@@ -30,9 +30,6 @@ on:
           - patch
 
 env:
-  # MT5 安装路径（需要根据实际情况修改，或使用 self-hosted runner）
-  MT5_PATH: 'C:\Program Files\MetaTrader 5'
-  MT5_EDITOR: 'metaeditor64.exe'
   EA_SOURCE: 'Ea_run.mq5'
   EA_OUTPUT: 'Ea_run.ex5'
 
@@ -108,14 +105,11 @@ jobs:
           git push
 
   # ===========================================================================
-  # Job 2: 编译 EA（需要 Self-Hosted Runner）
+  # Job 2: 编译 EA（使用 GitHub-Hosted Windows Runner）
   # ===========================================================================
   build:
     needs: version
-    # 使用 self-hosted runner（需要有 MT5 环境）
-    # 或者使用 windows-latest + 手动安装 MT5
-    runs-on: self-hosted-windows
-    # runs-on: windows-latest  # 备选方案
+    runs-on: windows-latest
     
     steps:
       - name: Checkout
@@ -123,35 +117,74 @@ jobs:
         with:
           ref: EA_2.0.0
       
-      # 如果使用 windows-latest，需要先安装 MT5
-      # - name: Install MT5
-      #   run: |
-      #     # 下载并安装 MT5
-      #     Invoke-WebRequest -Uri "https://download.mql5.com/cdn/web/metaeditor5.exe" -OutFile "metaeditor5.exe"
-      #     Start-Process -FilePath "metaeditor5.exe" -ArgumentList "/S" -Wait
+      - name: Install MT5 MetaEditor
+        run: |
+          Write-Host "Downloading MetaEditor..."
+          $url = "https://download.mql5.com/cdn/web/metaeditor5.exe"
+          $installer = "$env:TEMP\metaeditor5.exe"
+          Invoke-WebRequest -Uri $url -OutFile $installer
+          
+          Write-Host "Installing MetaEditor (silent)..."
+          Start-Process -FilePath $installer -ArgumentList "/S" -Wait
+          
+          # 查找安装路径
+          $possiblePaths = @(
+            "C:\Program Files\MetaTrader 5\metaeditor64.exe",
+            "C:\Program Files (x86)\MetaTrader 5\metaeditor64.exe",
+            "$env:LOCALAPPDATA\MetaTrader 5\metaeditor64.exe"
+          )
+          
+          foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+              Write-Host "Found MetaEditor at: $path"
+              echo "MT5_EDITOR=$path" >> $env:GITHUB_ENV
+              return
+            }
+          }
+          
+          # 如果默认路径没找到，尝试搜索
+          $found = Get-ChildItem -Path "C:\" -Filter "metaeditor64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            Write-Host "Found MetaEditor at: $($found.FullName)"
+            echo "MT5_EDITOR=$($found.FullName)" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "ERROR: MetaEditor not found"
+            exit 1
+          }
       
       - name: Compile EA
         id: compile
         run: |
-          $EDITOR = "${{ env.MT5_PATH }}\${{ env.MT5_EDITOR }}"
+          $EDITOR = $env:MT5_EDITOR
           $SOURCE = "${{ github.workspace }}\${{ env.EA_SOURCE }}"
           $LOG = "${{ github.workspace }}\compile.log"
           
-          Write-Host "Compiling $SOURCE with $EDITOR"
+          Write-Host "Compiling $SOURCE"
+          Write-Host "Using MetaEditor: $EDITOR"
           
           # MetaEditor 命令行编译
           # /compile: 源文件路径
           # /log: 日志输出
           # /include: include 目录
-          & $EDITOR /compile:$SOURCE /log:$LOG /include:"${{ github.workspace }}"
+          $includePath = "${{ github.workspace }}"
+          & $EDITOR /compile:"$SOURCE" /log:"$LOG" /include:"$includePath"
           
-          # 检查编译结果
-          if (Test-Path "${{ github.workspace }}\${{ env.EA_OUTPUT }}") {
+          # 等待编译完成
+          Start-Sleep -Seconds 5
+          
+          # 检查编译结果 - MetaEditor 输出到源文件同目录
+          $outputPath = "${{ github.workspace }}\${{ env.EA_OUTPUT }}"
+          
+          if (Test-Path $outputPath) {
             Write-Host "Compilation successful!"
+            Write-Host "Output: $outputPath"
             echo "success=true" >> $env:GITHUB_OUTPUT
           } else {
-            Write-Host "Compilation failed. Check log:"
-            Get-Content $LOG
+            Write-Host "Compilation failed!"
+            if (Test-Path $LOG) {
+              Write-Host "=== Compile Log ==="
+              Get-Content $LOG
+            }
             echo "success=false" >> $env:GITHUB_OUTPUT
             exit 1
           }
