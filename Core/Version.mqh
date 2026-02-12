@@ -36,6 +36,6 @@ string GetEAVersion() {
 //| 获取完整版本信息                                                     |
 //+------------------------------------------------------------------+
 string GetEABuildInfo() {
-    return StringFormat("EA v%s | Branch: %s | Build: %s %s",
-        EA_VERSION_STRING, EA_GIT_BRANCH, EA_BUILD_DATE, EA_BUILD_TIME);
+    return StringFormat("EA v%s | Branch: %s",
+        EA_VERSION_STRING, EA_GIT_BRANCH);
 }

@@ -4,7 +4,7 @@
 //+------------------------------------------------------------------+
 #property strict
 #property description "StrategyManager + BollMR + RiskPipeline + AI Filter"
-#property version   "2.0.0"
+#property version   "2.00"
 
 // 标准库
 #include <Trade/Trade.mqh>
