@@ -10,9 +10,9 @@
 // - PATCH: Bug修复/小优化
 
 #define EA_VERSION_MAJOR    2
-#define EA_VERSION_MINOR    6
+#define EA_VERSION_MINOR    7
 #define EA_VERSION_PATCH    0
-#define EA_VERSION_STRING   "2.6.0"
+#define EA_VERSION_STRING   "2.7.0"
 
 // 里程碑状态
 #define MILESTONE_M1_COMPLETE  false   // Mean Reversion Family
@@ -23,7 +23,7 @@
 #define EA_BUILD_DATE     __DATE__
 #define EA_BUILD_TIME     __TIME__
 #define EA_GIT_BRANCH     "EA_2.0.0"
-#define EA_GIT_COMMIT     "06cb4e0"
+#define EA_GIT_COMMIT     "25e3498"
 
 //+------------------------------------------------------------------+
 //| 获取版本字符串                                                       |
