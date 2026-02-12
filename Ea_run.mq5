@@ -29,6 +29,7 @@
 #include "Strategies/Strategy_BollMR_RSI.mqh"
 #include "Strategies/Strategy_BollMR_Time.mqh"
 #include "Strategies/Strategy_BollMR_RSI_Time.mqh"
+#include "Strategies/Strategy_TrendPullback.mqh"
 
 // 执行 & 风控
 #include "Core/TradeExecutor.mqh"
@@ -53,6 +54,7 @@ Strategy_BollMR_Base boll_base;    // Bollinger 均值回归策略（基线版�
 Strategy_BollMR_RSI  boll_rsi;     // Bollinger 均值回归策略（RSI 过滤）
 Strategy_BollMR_Time boll_time;    // Bollinger 均值回归策略（时间过滤）
 Strategy_BollMR_RSI_Time boll_rsi_time; // Bollinger 均值回归策略（RSI + 时间过滤）
+Strategy_TrendPullback trend_pullback; // 趋势回撤策略 (M2)
 
 TradeExecutor       executor; // 交易执行器
 RiskPipeline        risk_pipeline; // 风控管道
@@ -86,7 +88,7 @@ input bool AlertOnOrderFail  = true;   // 下单/平仓失败提示
 input int  GapCooldownBars = 5;        // 发现停盘缺口后跳过的bar数量
 
 //---------------- BollMR 版本 ----------------
-input string BollMRVariant = "enhanced"; // base / rsi / time / rsi_time / enhanced（选择策略变体）
+input string BollMRVariant = "enhanced"; // base / rsi / time / rsi_time / enhanced / trend_pullback（选择策略变体）
 
 //---------------- 运行时状态 ----------------
 bool g_period_valid = true;
@@ -127,6 +129,7 @@ void UpdateStatusPanel()
       time_allowed = boll_enhanced.TimeFilterOK();
    else if(g_boll_variant == "time")
       time_allowed = boll_time.TimeFilterOK();
+   // trend_pullback 没有时间过滤，默认允许
    string time_reason = "";
    if(!time_allowed)
       time_reason = "交易时间限制";
@@ -179,7 +182,7 @@ int OnInit()
    status_panel.Init(); // 初始化状态面板
    EventSetTimer(1); // 每秒刷新面板时间显示
 
-   // 1. 策略管理器：挂上 Bollinger 策略
+   // 1. 策略管理器：挂上策略
    g_boll_variant = BollMRVariant;
    StringToLower(g_boll_variant);
    if(g_boll_variant == "base")
@@ -190,6 +193,8 @@ int OnInit()
       manager.Add(&boll_time);
    else if(g_boll_variant == "rsi_time")
       manager.Add(&boll_rsi_time);
+   else if(g_boll_variant == "trend_pullback")
+      manager.Add(&trend_pullback);
    else
       manager.Add(&boll_enhanced);
 
@@ -223,6 +228,14 @@ int OnInit()
         if(!boll_rsi_time.Init())
         {
             Print("Failed to initialize BollMR RSI+Time strategy");
+            return INIT_FAILED;
+        }
+    }
+    else if(g_boll_variant == "trend_pullback")
+    {
+        if(!trend_pullback.Init())
+        {
+            Print("Failed to initialize TrendPullback strategy");
             return INIT_FAILED;
         }
     }
@@ -329,6 +342,11 @@ void OnTick()
    else if(g_boll_variant == "rsi_time")
    {
       if(!boll_rsi_time.UpdateIndicators())
+         return;
+   }
+   else if(g_boll_variant == "trend_pullback")
+   {
+      if(!trend_pullback.UpdateIndicators())
          return;
    }
    else

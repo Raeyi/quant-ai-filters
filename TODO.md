@@ -56,20 +56,24 @@
 ## 里程碑 M2: Trend Pullback Family v1【当前重点】
 
 - [ ] 执行顺序：先 M15 方向框架 → 再 M5 回撤入场 → 再小范围优化 → 再过滤/风控叠加
-- [ ] M2.0 基础设施：
+- [x] M2.0 基础设施：
   - [ ] Python 策略框架（TrendPullbackStrategy）
-  - [ ] MQL5 策略模板（Strategy_TrendPullback.mqh）
-  - [ ] 多周期数据支持（M5 + M15）
-- [ ] M2.a M15 方向判断：
-  - [ ] EMA50/EMA200 金叉死叉
-  - [ ] 趋势状态定义（BULL/BEAR/FLAT）
-- [ ] M2.b M5 回撤入场：
-  - [ ] 回撤到 EMA20/VWAP
-  - [ ] 小结构确认（前高/前低突破）
-  - [ ] 入场信号触发
-- [ ] M2.c 统一 SL/TP：
-  - [ ] ATR 1.0 止损
-  - [ ] ATR 1.5-2.0 止盈
+  - [x] MQL5 策略模板（Strategy_TrendPullback.mqh）
+  - [x] 多周期数据支持（M5 + M15）
+- [x] M2.a M15 方向判断：
+  - [x] EMA50/EMA200 金叉死叉
+  - [x] 趋势状态定义（BULL/BEAR/FLAT）
+  - [x] VWAP 辅助趋势确认
+- [x] M2.b M5 回撤入场：
+  - [x] 回撤到 EMA20/VWAP 价值区
+  - [x] 小结构确认（前高/前低突破）
+  - [x] K线形态确认（小实体/反包/影线）
+  - [x] 入场信号触发（LongSignal/ShortSignal）
+- [x] M2.c 统一 SL/TP：
+  - [x] ATR 1.0 止损
+  - [x] ATR 1.5 止盈（可配置）
+  - [x] 结构破坏出场信号
+- [x] 参数分组（input group: HTF/LTF/Structure/Risk/Timeframe）
 - [ ] M2.d 扩展：
   - [ ] 成交模型优化
   - [ ] 与 M1 策略组合测试
