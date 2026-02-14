@@ -118,6 +118,35 @@ R+L       0.10 0.20 0.25 0.45
 应用: R+L 持续 3 根 H1 后，P(→T+L)=0.20，可提前准备趋势策略
 ```
 
+### Regime 模块文件结构
+
+```
+Core/Regime/
+├── RegimeTypes.mqh          # 类型定义（含 Sub-Type）
+├── RegimeIndicators.mqh     # 指标计算
+├── MarketQuality.mqh        # Market Quality Score
+├── RegimeState.mqh          # 置信度模型
+├── RegimeDetector.mqh       # H1 主判定
+├── SubTypeClassifier.mqh    # Sub-Type 分类
+├── TransitionMatrix.mqh     # 转移概率
+├── StrategySelector.mqh     # 策略选择器 v2
+├── RiskExposure.mqh         # 风险暴露结构
+└── RegimeManager.mqh        # 综合管理
+
+Python/regime/
+├── __init__.py
+├── types.py                 # 类型定义
+├── indicators.py            # 基础指标
+├── quality.py               # Market Quality Score
+├── state.py                 # 置信度模型
+├── detector.py              # Regime 检测
+├── subtype.py               # Sub-Type 分类
+├── transition.py            # Transition Matrix
+├── selector.py              # 策略选择器
+├── risk_exposure.py         # 风险暴露结构
+└── backtest_regime.py       # 回测验证
+```
+
 ## 代码架构
 
 ### 目录结构
