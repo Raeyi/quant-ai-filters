@@ -126,77 +126,113 @@
 
 ## 支撑层: Regime Filter（市场状态过滤）【当前重点】
 
-### 架构设计
+### Alpha 核心来源
+
+> 市场不奖励"正确的结构"，市场只奖励"结构中被忽略的偏差"
+
+| Alpha 来源 | 说明 | 优先级 |
+|------------|------|--------|
+| **Market Quality Score** | Q<0.5 → STANDBY，解决"何时不用策略" | ⭐⭐⭐ |
+| **Regime Sub-Type** | 区分 T+V-A(情绪脉冲) vs T+V-B(真趋势) | ⭐⭐⭐ |
+| **Transition Matrix** | 提前布局下一状态 | ⭐⭐ |
+| **时间 × Regime** | 同一 Regime 不同时段权重不同 | ⭐⭐ |
+| **风险暴露结构** | Sub-Type → 不同止损/仓位参数 | ⭐ |
+
+### 架构设计 v2
 
 ```
-[ Market Regime Engine ] → [ Strategy Selector ] → [ Active Strategy ] → [ Risk Manager ]
+Layer 1: Base Regime (H1) → T+V/T+L/R+V/R+L
+Layer 2: Market Quality Score (M15) → Q_score (0~1)
+Layer 3: Regime Sub-Type → T+V-A/T+V-B/R+V-A/R+V-B
+Layer 4: Transition Probability → 提前布局
+         ↓
+Strategy Selector v2 → Sub-Type × Session × Quality → Action
+         ↓
+Risk Exposure Structure → Sub-Type → SL_mult/TP_mult/Position
 ```
-
-**核心原则**：不是"多策略一起跑"，而是"市场状态 → 决定谁能上场"
-
-### Regime 定义
-
-| Regime | 趋势 | 波动率 | 激活策略 |
-|--------|------|--------|----------|
-| T+V | 强趋势 | 高波动 | TrendPullback |
-| T+L | 强趋势 | 低波动 | TrendPullback |
-| R+V | 震荡 | 高波动 | **STANDBY** |
-| R+L | 震荡 | 低波动 | BollMR |
 
 ### 开发阶段
 
-- [ ] Phase 1: Python 指标 + 分类器
-  - [ ] RegimeIndicators (trend_strength, volatility_state, momentum_efficiency)
-  - [ ] RegimeClassifier (T+V/T+L/R+V/R+L)
+- [ ] Phase 1: Base Regime + Market Quality Score
+  - [ ] RegimeIndicators (trend_strength, volatility_state)
+  - [ ] MarketQuality (efficiency, false_breakout_rate)
+  - [ ] Q_score 计算，Q<0.5 → STANDBY
   - [ ] 历史数据验证 Regime 识别准确率
-- [ ] Phase 2: Python 置信度模型
-  - [ ] RegimeState (连续置信度，非离散)
-  - [ ] 置信度衰减/叠加机制
-  - [ ] 切换平滑度验证
-- [ ] Phase 3: Python 策略选择器
-  - [ ] StrategySelector (Regime → Strategy)
+- [ ] Phase 2: Regime Sub-Type 分类
+  - [ ] T+V-A (情绪脉冲): 高波动 + 低效率
+  - [ ] T+V-B (真趋势): 高波动 + 高效率 ← 重仓机会
+  - [ ] R+V-A (消息震荡): 高反转率
+  - [ ] R+V-B (假突破密集): 高假突破率
+  - [ ] Sub-Type → scale 映射
+- [ ] Phase 3: 策略选择器 + 时间权重
+  - [ ] StrategySelector (Sub-Type × Session × Quality)
+  - [ ] TIME_REGIME_WEIGHTS 矩阵
   - [ ] 状态机 (ACTIVE/STANDBY/TRANSITION)
   - [ ] 持仓处理规则
-- [ ] Phase 4: Python 回测验证
-  - [ ] 各 Regime 下策略表现对比
-  - [ ] 切换时机分析
+- [ ] Phase 4: Transition Matrix 统计
+  - [ ] 历史 Regime 转移概率统计
+  - [ ] TRANSITION_MATRIX 构建
+  - [ ] 提前布局逻辑
+- [ ] Phase 5: 风险暴露结构
+  - [ ] Sub-Type → SL_mult/TP_mult/Position 映射
+  - [ ] 加仓权限控制
+- [ ] Phase 6: Python 回测验证
+  - [ ] 各 Sub-Type 下策略表现对比
+  - [ ] Quality Score 过滤效果验证
   - [ ] 整体收益评估
-- [ ] Phase 5: MQL5 实现
+- [ ] Phase 7: MQL5 实现
   - [ ] Core/Regime/ 模块
   - [ ] 集成到 Ea_run.mq5
   - [ ] 替换现有 Strategy_Combo
 
-### 关键设计
+### Regime Sub-Type 定义
 
-| 维度 | 设计 |
-|------|------|
-| **周期** | H1 主判定，M15 过滤 |
-| **切换** | 连续确认 + 置信度衰减 |
-| **置信度** | 每个 Regime 独立 confidence (0-1) |
-| **持仓** | 切换时保留，新策略不开新仓 |
-| **过渡** | TRANSITION 状态 |
-| **仓位** | confidence → position_scale |
+| Sub-Type | 条件 | scale | SL_mult | 加仓 |
+|----------|------|-------|---------|------|
+| **T+V-A** | 高波动 + 低效率 | 0.5 | 0.8 | 禁止 |
+| **T+V-B** | 高波动 + 高效率 | 1.2 | 1.5 | 允许 |
+| **T+L** | 低波动 + 趋势 | 1.0 | 1.0 | 允许 |
+| **R+V-A** | 高反转率 | 0 | - | 禁止 |
+| **R+V-B** | 高假突破率 | 0 | - | 禁止 |
+| **R+L** | 低波动 + 震荡 | 1.0 | 1.0 | 禁止 |
+
+### 时间权重矩阵
+
+```python
+TIME_REGIME_WEIGHTS = {
+    'T+V': {'asia': 0.6, 'europe': 1.0, 'us': 1.3, 'overlap': 1.2},
+    'T+L': {'asia': 0.8, 'europe': 1.0, 'us': 1.1, 'overlap': 1.1},
+    'R+L': {'asia': 1.2, 'europe': 1.0, 'us': 0.7, 'overlap': 0.8},
+}
+```
 
 ### 文件结构
 
 ```
 Core/Regime/
-├── RegimeTypes.mqh          # 类型定义
+├── RegimeTypes.mqh          # 类型定义（含 Sub-Type）
 ├── RegimeIndicators.mqh     # 指标计算
+├── MarketQuality.mqh        # Market Quality Score
 ├── RegimeState.mqh          # 置信度模型
 ├── RegimeDetector.mqh       # H1 主判定
-├── RegimeFilter.mqh         # M15 过滤
-├── StrategySelector.mqh     # 策略选择器
+├── SubTypeClassifier.mqh    # Sub-Type 分类
+├── TransitionMatrix.mqh     # 转移概率
+├── StrategySelector.mqh     # 策略选择器 v2
+├── RiskExposure.mqh         # 风险暴露结构
 └── RegimeManager.mqh        # 综合管理
 
 Python/regime/
 ├── __init__.py
-├── types.py
-├── indicators.py
-├── state.py
-├── detector.py
-├── selector.py
-└── backtest_regime.py
+├── types.py                 # 类型定义
+├── indicators.py            # 基础指标
+├── quality.py               # Market Quality Score
+├── state.py                 # 置信度模型
+├── detector.py              # Regime 检测
+├── subtype.py               # Sub-Type 分类
+├── transition.py            # Transition Matrix
+├── selector.py              # 策略选择器
+├── risk_exposure.py         # 风险暴露结构
+└── backtest_regime.py       # 回测验证
 ```
 
 ## 里程碑 M4: 回测评估升级
