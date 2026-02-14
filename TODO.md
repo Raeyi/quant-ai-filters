@@ -2,14 +2,16 @@
 
 ## 执行顺序总览
 
-### 策略层（三大策略族并列）
-- [ ] M1（Mean Reversion）：框架完成，参数优化【暂停，待多策略联调】
-- [ ] M2（Trend Pullback）：【当前重点】先 M15 方向框架 → 再 M5 回撤入场 → 再小范围优化
-- [ ] M3（XAUUSD Alpha）：美盘结构策略，结构识别 → 仓位结构 → 参数优化
+### 支撑层（服务于所有策略）【当前重点】
+- [ ] Regime Filter：市场状态过滤 → 策略选择器 → 策略激活
 
-### 支撑层（服务于策略）
-- [ ] Regime Filter：市场状态过滤，规则 → ML 打分 → 策略组合与风控
-- [ ] M4（回测评估）：统一评估框架，指标口径统一 → 批量评估/相关性 → 复杂评估维度
+### 策略层（三大策略族并列）
+- [x] M1（Mean Reversion）：框架完成 + 参数优化
+- [x] M2（Trend Pullback）：框架完成 + 参数优化
+- [ ] M3（XAUUSD Alpha）：美盘结构策略【跳过，优先支撑层】
+
+### 评估层
+- [ ] M4（回测评估）：统一评估框架
 
 ## 已完成
 
@@ -122,12 +124,80 @@
   - [ ] 风控开关、交易频次限制
   - [ ] 日志/监控
 
-## 支撑层: Regime Filter（市场状态过滤）
+## 支撑层: Regime Filter（市场状态过滤）【当前重点】
 
-- [ ] 执行顺序：先规则过滤验证 → 再 ML 打分/权重 → 最后接入策略组合与风控
-- [ ] 输出不同策略族权重（不直接下单）
-- [ ] 指标：ATR 变化、假突破频率、回撤吞没速度
-- [ ] 构建多策略注册与组合风控层
+### 架构设计
+
+```
+[ Market Regime Engine ] → [ Strategy Selector ] → [ Active Strategy ] → [ Risk Manager ]
+```
+
+**核心原则**：不是"多策略一起跑"，而是"市场状态 → 决定谁能上场"
+
+### Regime 定义
+
+| Regime | 趋势 | 波动率 | 激活策略 |
+|--------|------|--------|----------|
+| T+V | 强趋势 | 高波动 | TrendPullback |
+| T+L | 强趋势 | 低波动 | TrendPullback |
+| R+V | 震荡 | 高波动 | **STANDBY** |
+| R+L | 震荡 | 低波动 | BollMR |
+
+### 开发阶段
+
+- [ ] Phase 1: Python 指标 + 分类器
+  - [ ] RegimeIndicators (trend_strength, volatility_state, momentum_efficiency)
+  - [ ] RegimeClassifier (T+V/T+L/R+V/R+L)
+  - [ ] 历史数据验证 Regime 识别准确率
+- [ ] Phase 2: Python 置信度模型
+  - [ ] RegimeState (连续置信度，非离散)
+  - [ ] 置信度衰减/叠加机制
+  - [ ] 切换平滑度验证
+- [ ] Phase 3: Python 策略选择器
+  - [ ] StrategySelector (Regime → Strategy)
+  - [ ] 状态机 (ACTIVE/STANDBY/TRANSITION)
+  - [ ] 持仓处理规则
+- [ ] Phase 4: Python 回测验证
+  - [ ] 各 Regime 下策略表现对比
+  - [ ] 切换时机分析
+  - [ ] 整体收益评估
+- [ ] Phase 5: MQL5 实现
+  - [ ] Core/Regime/ 模块
+  - [ ] 集成到 Ea_run.mq5
+  - [ ] 替换现有 Strategy_Combo
+
+### 关键设计
+
+| 维度 | 设计 |
+|------|------|
+| **周期** | H1 主判定，M15 过滤 |
+| **切换** | 连续确认 + 置信度衰减 |
+| **置信度** | 每个 Regime 独立 confidence (0-1) |
+| **持仓** | 切换时保留，新策略不开新仓 |
+| **过渡** | TRANSITION 状态 |
+| **仓位** | confidence → position_scale |
+
+### 文件结构
+
+```
+Core/Regime/
+├── RegimeTypes.mqh          # 类型定义
+├── RegimeIndicators.mqh     # 指标计算
+├── RegimeState.mqh          # 置信度模型
+├── RegimeDetector.mqh       # H1 主判定
+├── RegimeFilter.mqh         # M15 过滤
+├── StrategySelector.mqh     # 策略选择器
+└── RegimeManager.mqh        # 综合管理
+
+Python/regime/
+├── __init__.py
+├── types.py
+├── indicators.py
+├── state.py
+├── detector.py
+├── selector.py
+└── backtest_regime.py
+```
 
 ## 里程碑 M4: 回测评估升级
 
