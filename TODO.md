@@ -45,7 +45,7 @@
   - [x] Quality Score 过滤效果验证
   - [x] 整体收益评估
 - [ ] Phase 7: MQL5 实现
-  - [ ] Core/Regime/ 模块
+  - [x] Core/Regime/ 模块
   - [ ] 集成到 Ea_run.mq5
   - [ ] 替换现有 Strategy_Combo
 
