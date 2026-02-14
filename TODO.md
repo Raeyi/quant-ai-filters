@@ -41,9 +41,9 @@
   - [x] Sub-Type → SL_mult/TP_mult/Position 映射
   - [x] 加仓权限控制
 - [ ] Phase 6: Python 回测验证
-  - [ ] 各 Sub-Type 下策略表现对比
-  - [ ] Quality Score 过滤效果验证
-  - [ ] 整体收益评估
+  - [x] 各 Sub-Type 下策略表现对比
+  - [x] Quality Score 过滤效果验证
+  - [x] 整体收益评估
 - [ ] Phase 7: MQL5 实现
   - [ ] Core/Regime/ 模块
   - [ ] 集成到 Ea_run.mq5

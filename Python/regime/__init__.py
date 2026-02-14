@@ -22,6 +22,9 @@ Phase 4:
 Phase 5:
 - RiskExposureManager: 风险暴露管理
 - Sub-Type → SL/TP/Position 映射
+
+Phase 6:
+- RegimeIntegratedBacktest: 整合 Regime 的回测验证
 """
 
 from regime.regime_indicators import RegimeIndicators, RegimeParams, RegimeType, VolatilityState
@@ -51,6 +54,10 @@ from regime.risk_exposure import (
     RiskExposureConfig,
     RiskAdjustment,
     RiskLevel,
+)
+from regime.backtest_with_regime import (
+    RegimeIntegratedBacktest,
+    BacktestResult,
 )
 
 __all__ = [
@@ -85,4 +92,7 @@ __all__ = [
     "RiskExposureConfig",
     "RiskAdjustment",
     "RiskLevel",
+    # Phase 6
+    "RegimeIntegratedBacktest",
+    "BacktestResult",
 ]
