@@ -98,6 +98,7 @@
   - [x] Python 多策略回测脚本（backtest_combo.py）
   - [x] 参数优化（param_optimize.py）
   - [x] 优化参数同步到 MT5
+  - [x] CI/CD Self-Hosted Runner 配置
   - [ ] 成交模型优化（可选，低频策略影响小）
 
 ## 里程碑 M3: XAUUSD Alpha（美盘结构策略）

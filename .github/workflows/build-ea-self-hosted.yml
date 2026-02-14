@@ -1,13 +1,13 @@
 # =============================================================================
-# EA Build & Release Workflow
+# EA Build & Release Workflow (Self-Hosted Runner)
 # =============================================================================
-# 从 GitHub Release 下载 MT5 安装包，自动编译 EA
+# 使用本地 Self-Hosted Runner 编译 EA
 # 前置条件：
-#   1. 上传 MT5 安装包到 Release (tag: mt5-assets)
-#   2. 文件名: mt5setup.exe
+#   1. 在本地机器配置 Self-Hosted Runner
+#   2. 安装 MT5 并确认 MetaEditor 路径
 # =============================================================================
 
-name: Build EA & Release
+name: Build EA (Self-Hosted)
 
 on:
   # 手动触发
@@ -38,13 +38,17 @@ on:
       - 'Core/**'
       - 'Strategies/**'
 
+# 权限配置
 permissions:
   contents: write
 
 env:
   EA_SOURCE: 'Ea_run.mq5'
   EA_OUTPUT: 'Ea_run.ex5'
-  MT5_INSTALL_PATH: 'C:\MT5'
+  # MT5 路径 - 根据实际安装位置修改
+  MT5_PATH: 'C:\Program Files\MetaTrader 5'
+  # 或使用便携版路径
+  # MT5_PATH: 'C:\MT5\MetaTrader 5'
 
 jobs:
   # ===========================================================================
@@ -95,78 +99,33 @@ jobs:
           echo "New version: $NEW_VERSION (tag: $TAG)"
 
   # ===========================================================================
-  # Job 2: 编译 EA
+  # Job 2: 编译 EA (Self-Hosted Windows Runner)
   # ===========================================================================
   build:
     needs: version
-    runs-on: windows-latest
+    runs-on: self-hosted-windows  # Self-Hosted Runner 标签
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       
-      # 缓存 MT5 安装
-      - name: Cache MT5 Installation
-        id: cache-mt5
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.MT5_INSTALL_PATH }}
-          key: mt5-install-v1
-
-      # 从 Release 下载 MT5 安装包
-      - name: Download MT5 Installer
-        if: steps.cache-mt5.outputs.cache-hit != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          Write-Host "Downloading MT5 installer from release..."
-          
-          $installerPath = "$env:TEMP\mt5setup.exe"
-          
-          # 从 mt5-assets release 下载
-          gh release download mt5-assets --pattern "mt5setup.exe" --dir $env:TEMP --repo ${{ github.repository }}
-          
-          Write-Host "Downloaded: $installerPath"
-          echo "INSTALLER_PATH=$installerPath" >> $env:GITHUB_ENV
-
-      # 安装 MT5
-      - name: Install MT5
-        if: steps.cache-mt5.outputs.cache-hit != 'true'
-        run: |
-          Write-Host "Installing MT5..."
-          
-          $installPath = "${{ env.MT5_INSTALL_PATH }}"
-          $installerPath = "$env:TEMP\mt5setup.exe"
-          
-          # 创建安装目录
-          New-Item -ItemType Directory -Path $installPath -Force | Out-Null
-          
-          # 静默安装到指定目录
-          # /S - 静默模式
-          # /D - 安装目录（必须放在最后）
-          Start-Process -FilePath $installerPath -ArgumentList "/S", "/D=$installPath" -Wait
-          
-          Write-Host "MT5 installed to: $installPath"
-          
-          # 列出安装内容
-          Get-ChildItem $installPath -Recurse -Filter "*.exe" | Select-Object Name, FullName
-
-      # 查找 MetaEditor
       - name: Find MetaEditor
         id: find-editor
+        shell: powershell
         run: |
-          $installPath = "${{ env.MT5_INSTALL_PATH }}"
-          
-          # 常见 MetaEditor 位置
+          # 常见 MT5 安装路径
           $possiblePaths = @(
-            "$installPath\MetaEditor64.exe",
-            "$installPath\terminal64.exe",
-            "$installPath\*\MetaEditor64.exe"
+            "${{ env.MT5_PATH }}\MetaEditor64.exe",
+            "C:\Program Files\MetaTrader 5\MetaEditor64.exe",
+            "C:\Program Files (x86)\MetaTrader 5\MetaEditor64.exe",
+            "C:\MT5\MetaTrader 5\MetaEditor64.exe",
+            "${env:APPDATA}\MetaQuotes\Terminal\*\MetaEditor64.exe"
           )
           
           $editor = $null
           foreach ($path in $possiblePaths) {
             if ($path -like "*`*`*") {
+              # 通配符路径
               $matched = Get-Item $path -ErrorAction SilentlyContinue | Select-Object -First 1
               if ($matched) {
                 $editor = $matched.FullName
@@ -179,18 +138,19 @@ jobs:
           }
           
           if (-not $editor) {
-            Write-Host "ERROR: MetaEditor not found"
-            Write-Host "Contents of $installPath:"
-            Get-ChildItem $installPath -Recurse -Filter "*.exe" | ForEach-Object { Write-Host "  $($_.FullName)" }
+            Write-Host "ERROR: MetaEditor not found in any known location"
+            Write-Host "Searched paths:"
+            $possiblePaths | ForEach-Object { Write-Host "  $_" }
             exit 1
           }
           
           Write-Host "Found MetaEditor: $editor"
           echo "editor=$editor" >> $env:GITHUB_OUTPUT
-
-      # 编译 EA
+          echo "mt5_dir=$(Split-Path $editor -Parent)" >> $env:GITHUB_OUTPUT
+      
       - name: Compile EA
         id: compile
+        shell: powershell
         run: |
           $EDITOR = "${{ steps.find-editor.outputs.editor }}"
           $WORKSPACE = "${{ github.workspace }}"
@@ -203,31 +163,44 @@ jobs:
           Write-Host "  Editor: $EDITOR"
           Write-Host "=========================================="
           
-          # 编译
-          Start-Process -FilePath $EDITOR `
-            -ArgumentList "/compile:`"$SOURCE`"", "/log:`"$LOG`"", "/include:`"$WORKSPACE`"" `
-            -NoNewWindow -Wait
+          # MetaEditor 命令行参数
+          # /compile: 源文件
+          # /log: 日志文件
+          # /include: include 路径
           
-          Start-Sleep -Seconds 5
+          $includePath = $WORKSPACE
           
-          # 检查结果
+          # 启动编译（静默模式）
+          $process = Start-Process -FilePath $EDITOR `
+            -ArgumentList "/compile:`"$SOURCE`"", "/log:`"$LOG`"", "/include:`"$includePath`"" `
+            -NoNewWindow -PassThru -Wait
+          
+          # 等待文件写入完成
+          Start-Sleep -Seconds 3
+          
+          # 检查输出
           $outputPath = "$WORKSPACE\${{ env.EA_OUTPUT }}"
+          
+          Write-Host ""
+          Write-Host "=== Compilation Result ==="
           
           if (Test-Path $outputPath) {
             $fileInfo = Get-Item $outputPath
             Write-Host "SUCCESS: $outputPath"
             Write-Host "  Size: $($fileInfo.Length) bytes"
+            Write-Host "  Modified: $($fileInfo.LastWriteTime)"
             echo "success=true" >> $env:GITHUB_OUTPUT
           } else {
             Write-Host "FAILED: Output file not found"
             if (Test-Path $LOG) {
+              Write-Host ""
               Write-Host "=== Compile Log ==="
               Get-Content $LOG -Encoding UTF8
             }
+            echo "success=false" >> $env:GITHUB_OUTPUT
             exit 1
           }
-
-      # 上传产物
+      
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -253,12 +226,9 @@ jobs:
           name: ea-binary-${{ needs.version.outputs.version }}
           path: ./dist
       
-      - name: Prepare release files
+      - name: Rename for release
         run: |
           mv dist/Ea_run.ex5 dist/Ea_run_v${{ needs.version.outputs.version }}.ex5
-          
-          # 复制 set 文件
-          cp quant_combo_optimized.set dist/ 2>/dev/null || true
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -271,26 +241,28 @@ jobs:
             ### 编译信息
             - **分支**: ${{ github.ref_name }}
             - **Commit**: ${{ needs.version.outputs.commit_sha }}
+            - **编译时间**: ${{ github.event.head_commit.timestamp }}
             
             ### 文件
             - `Ea_run_v${{ needs.version.outputs.version }}.ex5` - 编译后的 EA
-            - `quant_combo_optimized.set` - 优化参数配置
             
             ### 使用方法
             1. 下载 `.ex5` 文件
             2. 复制到 MT5 的 `MQL5/Experts` 目录
             3. 刷新 MT5 导航器
-            4. 加载 `quant_combo_optimized.set` 参数文件
+            4. 拖拽到图表即可使用
+            
+            ### 参数配置
+            可加载 `quant_combo_optimized.set` 文件快速配置优化参数。
           files: |
             dist/Ea_run_v${{ needs.version.outputs.version }}.ex5
-            dist/quant_combo_optimized.set
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ===========================================================================
-  # Job 4: 构建报告
+  # Job 4: 编译报告
   # ===========================================================================
   report:
     needs: [version, build, release]
@@ -307,5 +279,6 @@ jobs:
           echo "| Version | ${{ needs.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tag | ${{ needs.version.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Release | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ needs.version.outputs.commit_sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Status | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Status | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
