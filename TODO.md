@@ -17,29 +17,29 @@
 
 ## 支撑层: Regime Filter【当前重点】
 
-- [ ] Phase 1: Base Regime + Market Quality Score
-  - [ ] RegimeIndicators (trend_strength, volatility_state)
-  - [ ] MarketQuality (efficiency, false_breakout_rate)
-  - [ ] Q_score 计算，Q<0.5 → STANDBY
-  - [ ] 历史数据验证 Regime 识别准确率
+- [x] Phase 1: Base Regime + Market Quality Score
+  - [x] RegimeIndicators (trend_strength, volatility_state)
+  - [x] MarketQuality (efficiency, false_breakout_rate)
+  - [x] Q_score 计算，Q<0.5 → STANDBY
+  - [x] 历史数据验证脚本 (Python/regime/validate_regime.py)
 - [ ] Phase 2: Regime Sub-Type 分类
-  - [ ] T+V-A (情绪脉冲): 高波动 + 低效率
-  - [ ] T+V-B (真趋势): 高波动 + 高效率
-  - [ ] R+V-A (消息震荡): 高反转率
-  - [ ] R+V-B (假突破密集): 高假突破率
-  - [ ] Sub-Type → scale 映射
+  - [x] T+V-A (情绪脉冲): 高波动 + 低效率
+  - [x] T+V-B (真趋势): 高波动 + 高效率
+  - [x] R+V-A (消息震荡): 高反转率
+  - [x] R+V-B (假突破密集): 高假突破率
+  - [x] Sub-Type → scale 映射
 - [ ] Phase 3: 策略选择器 + 时间权重
-  - [ ] StrategySelector (Sub-Type × Session × Quality)
-  - [ ] TIME_REGIME_WEIGHTS 矩阵
-  - [ ] 状态机 (ACTIVE/STANDBY/TRANSITION)
-  - [ ] 持仓处理规则
+  - [x] StrategySelector (Sub-Type × Session × Quality)
+  - [x] TIME_REGIME_WEIGHTS 矩阵
+  - [x] 状态机 (ACTIVE/STANDBY/TRANSITION)
+  - [x] 持仓处理规则
 - [ ] Phase 4: Transition Matrix 统计
-  - [ ] 历史 Regime 转移概率统计
-  - [ ] TRANSITION_MATRIX 构建
-  - [ ] 提前布局逻辑
+  - [x] 历史 Regime 转移概率统计
+  - [x] TRANSITION_MATRIX 构建
+  - [x] 提前布局逻辑
 - [ ] Phase 5: 风险暴露结构
-  - [ ] Sub-Type → SL_mult/TP_mult/Position 映射
-  - [ ] 加仓权限控制
+  - [x] Sub-Type → SL_mult/TP_mult/Position 映射
+  - [x] 加仓权限控制
 - [ ] Phase 6: Python 回测验证
   - [ ] 各 Sub-Type 下策略表现对比
   - [ ] Quality Score 过滤效果验证
