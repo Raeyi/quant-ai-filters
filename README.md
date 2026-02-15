@@ -4,7 +4,46 @@
 
 - 目标：XAUUSD 小周期策略的可插拔体系（MQL5 实盘 + Python 回测/研究）
 - 结构：**Regime 引擎 + 策略选择器 + 策略族 + 风控层**
-- 版本：v2.2.0-development
+- 版本：v2.2.0
+
+## 开发路线
+
+```
+Phase 1: 基础架构 ✅
+├── M1: 策略框架           → v2.0.0
+└── M2: 风控管道           → v2.1.0
+
+Phase 2: 策略开发 ✅
+├── M3: Mean Reversion     → v2.1.0
+└── M4: Trend Pullback     → v2.1.0
+
+Phase 3: Regime 引擎 ✅
+└── M5: Regime Filter      → v2.2.0
+
+Phase 4: AI 增强 🔄
+├── M6: 参数优化 + 数据收集  → v2.3.0 ← 当前
+├── M7: ML 参数优化         → v2.3.0
+└── M8: RL 状态决策         → v2.4.0
+
+Phase 5: 策略扩展 ⏳
+└── M9: XAUUSD Alpha        → v2.5.0
+```
+
+### 分支策略
+
+```
+main
+├── release/v2.0.0          # Phase 1 完成
+├── release/v2.1.0          # Phase 2 完成
+├── release/v2.2.0          # Phase 3 完成 ← 当前稳定版
+├── release/v2.3.0          # Phase 4 M6+M7
+└── release/v2.4.0          # Phase 4 M8
+
+开发分支：
+├── feature/m6-param-optimization   # M6 开发 ← 当前
+├── feature/m7-ml-optimization      # M7 开发
+└── feature/m8-rl-decision          # M8 开发
+```
 
 ## 系统架构
 
@@ -12,13 +51,13 @@
 
 > 市场不奖励"正确的结构"，市场只奖励"结构中被忽略的偏差"
 
-|| Alpha 来源 | 说明 |
-||------------|------|
-|| **Market Quality Score** | 决定"何时不用策略"，Q<0.5 → STANDBY |
-|| **Regime Sub-Type** | 区分"真趋势"vs"情绪脉冲" |
-|| **Transition Matrix** | 提前布局下一状态 |
-|| **时间 × Regime** | 同一 Regime 不同时段权重不同 |
-|| **风险暴露结构** | Sub-Type → 不同止损/仓位参数 |
+| Alpha 来源 | 说明 |
+|------------|------|
+| **Market Quality Score** | 决定"何时不用策略"，Q<阈值 → STANDBY |
+| **Regime Sub-Type** | 区分"真趋势"vs"情绪脉冲" |
+| **Transition Matrix** | 提前布局下一状态 |
+| **时间 × Regime** | 同一 Regime 不同时段权重不同 |
+| **风险暴露结构** | Sub-Type → 不同止损/仓位参数 |
 
 ### Regime 状态机
 
@@ -27,16 +66,16 @@
 │                   Regime Filter 状态机                       │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│    Q_score > 0.6 + hysteresis                              │
+│    Q_score > Active阈值 + hysteresis                        │
 │    ┌──────────────────────────────────────┐                │
 │    │                                      │                │
 │    ▼                                      │                │
-│ ┌────────┐  Q < 0.5 - hysteresis  ┌───────────┐           │
-│ │ ACTIVE │ ──────────────────────▶│  STANDBY  │           │
-│ └────────┘                        └───────────┘           │
-│    ▲                                      │                │
-│    │         ┌─────────────┐              │                │
-│    └─────────│ TRANSITION  │◀─────────────┘                │
+│ ┌────────┐  Q < Standby阈值 - hysteresis  ┌───────────┐   │
+│ │ ACTIVE │ ──────────────────────────────▶│  STANDBY  │   │
+│ └────────┘                                └───────────┘   │
+│    ▲                                            │          │
+│    │         ┌─────────────┐                    │          │
+│    └─────────│ TRANSITION  │◀───────────────────┘          │
 │              └─────────────┘  连续确认 N bars               │
 │                                                             │
 │  STANDBY 时：禁止新开仓信号                                   │
@@ -56,6 +95,26 @@
 | R+N (正常震荡) | RANGE | NORMAL | 区间稳定 | scale=1.0 |
 | R+L (低波动震荡) | RANGE | LOW | 波动极低 | scale=0.3 |
 
+### Q-Score 计算
+
+**公式**：基于基准值的动态评分
+
+```
+Q = 0.5 + eff_score + fbr_score
+
+eff_score = 0.25 × (efficiency / baseline_eff - 1)
+fbr_score = 0.25 × (baseline_fbr - fbr) / baseline_fbr
+```
+
+**基准值**：
+- `MQ_Efficiency_Baseline = 0.15`（震荡市正常效率）
+- `MQ_FBR_Baseline = 0.50`（震荡市正常假突破率）
+
+**效果**：
+- 效率高于基准 → 加分
+- 假突破率低于基准 → 加分
+- Q 范围：0.1 ~ 0.9
+
 ## 代码架构
 
 ### 目录结构
@@ -67,23 +126,23 @@ quant-ai-filters/
 │   ├── Signal.mqh          # 信号结构体
 │   ├── TradeTypes.mqh      # 交易类型枚举
 │   ├── TradeExecutor.mqh   # 交易执行器
-│   ├── Strategy.mqh        # 策略接口（含 Init/UpdateIndicators/TimeFilterOK）
+│   ├── Strategy.mqh        # 策略接口
 │   ├── StrategyManager.mqh # 策略调度器
-│   ├── StrategyRegistry.mqh # 策略注册表（统一生命周期管理）【新增】
+│   ├── StrategyRegistry.mqh # 策略注册表
 │   ├── PositionCoordinator.mqh # 持仓协调器
 │   ├── Inputs_All.mqh      # 统一输入参数
-│   ├── Regime/             # Regime Filter 模块【新增】
-│   │   ├── RegimeTypes.mqh     # 类型定义 + 辅助函数
-│   │   ├── RegimeIndicators.mqh # ADX/ATR 指标
-│   │   ├── MarketQuality.mqh   # Q_score 计算
-│   │   └── RegimeFilter.mqh    # 主过滤类
+│   ├── Regime/             # Regime Filter 模块
+│   │   ├── RegimeTypes.mqh
+│   │   ├── RegimeIndicators.mqh
+│   │   ├── MarketQuality.mqh
+│   │   └── RegimeFilter.mqh
 │   ├── Risk/               # 风控子模块
-│   │   ├── RiskPipeline.mqh    # 风控管道（统一入口）
-│   │   ├── StructuralCooldown.mqh # 结构冷却器
-│   │   ├── AddPositionManager.mqh # 加仓管理器
+│   │   ├── RiskPipeline.mqh
+│   │   ├── StructuralCooldown.mqh
+│   │   ├── AddPositionManager.mqh
 │   │   └── ...
 │   └── UI/
-│       └── StatusPanel.mqh     # 状态面板（含 Regime 显示）
+│       └── StatusPanel.mqh
 ├── Strategies/             # 策略实现
 │   ├── Strategy_BollMR_enhanced.mqh
 │   ├── Strategy_BollMR_Base.mqh
@@ -93,15 +152,7 @@ quant-ai-filters/
 │   ├── Bollinger.mqh
 │   └── ATR.mqh
 └── Python/                 # Python 回测工具
-    └── regime/             # Regime Filter Python 模块【新增】
-        ├── regime_indicators.py
-        ├── regime_filter.py
-        ├── regime_subtype.py
-        ├── strategy_selector.py
-        ├── transition_matrix.py
-        ├── risk_exposure.py
-        ├── backtest_with_regime.py
-        └── validate_regime.py
+    └── regime/             # Regime Filter Python 模块
 ```
 
 ### 核心模块职责
@@ -118,121 +169,22 @@ quant-ai-filters/
 ### 数据流向
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Ea_run.mq5                              │
-│                      OnTick / OnTimer                           │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     StrategyRegistry                            │
-│  registry.UpdateIndicators() → 统一更新所有策略指标               │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     CRegimeFilter                               │
-│  Update(close, high, low) → Q_score → State (ACTIVE/STANDBY)   │
-│  STANDBY 时：拒绝新开仓信号                                       │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   StrategyManager                               │
-│  GetSignal() → Signal                                          │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ Signal
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      RiskPipeline                               │
-│  BuildTrade(signal, req)                                       │
-│  ├── AccountRisk: 日内亏损限制                                   │
-│  ├── LosingStreakGuard: 连续止损冷却                             │
-│  ├── StructuralCooldown: 结构冷却                               │
-│  ├── PositionSizer: 仓位计算                                    │
-│  └── TradeRisk: SL/TP 验证                                      │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ TradeRequest
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     TradeExecutor                               │
-│  Execute(req) → MT5 API                                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### StatusPanel 显示
-
-面板新增 Regime 状态行：
-```
-Regime: STANDBY [T+V-A] Q=0.42
-```
-- 状态：ACTIVE / STANDBY / TRANSITION
-- Sub-Type：T+V-B / T+V-A / R+N 等
-- Q_score：市场质量分数
-
-## 扩展指南
-
-### 新增策略（使用 StrategyRegistry）
-
-```mql5
-// 1. 创建策略类（继承 IStrategy）
-class Strategy_New : public IStrategy {
-public:
-    virtual bool Init() override { ... }
-    virtual bool UpdateIndicators() override { ... }
-    virtual bool TimeFilterOK() override { ... }
-    virtual Signal GenerateSignal(Signal &out) override { ... }
-};
-
-// 2. 在 Ea_run.mq5 中注册（OnInit）
-Strategy_New new_strategy;
-
-// 注册策略
-registry.Register("new_strategy", &new_strategy);
-
-// 如果是组合策略的子策略
-registry.Register("new_strategy_child", &new_strategy, true);
-combo.AddStrategy(&new_strategy, "NewStrategy");
-
-// 3. 选择策略变体
-registry.Select("new_strategy");  // 或在参数中选择
-```
-
-**无需修改 OnTick 中的指标更新逻辑**，`registry.UpdateIndicators()` 会自动处理。
-
-### 新增 Regime Sub-Type
-
-在 `RegimeFilter.mqh` 的 `ClassifySubType()` 中添加新分类规则：
-
-```mql5
-RegimeSubType ClassifySubType() {
-    // 添加新的判断条件
-    if (new_condition)
-        return SUBTYPE_NEW_TYPE;
-    // ...
-}
-```
-
-### 新增风控模块
-
-1. 在 `Core/Risk/` 下创建新模块
-2. 在 `RiskPipeline` 中集成
-3. 在 `BuildTrade()` 中添加检查逻辑
-
-## Regime Filter 参数
-
-```
-Regime Filter 设置:
-├── RF_Q_Score_Standby = 0.5    # STANDBY 阈值
-├── RF_Q_Score_Active = 0.6     # ACTIVE 阈值
-├── RF_Transition_Bars = 3      # 过渡期 K 线数
-├── RF_Hysteresis = 0.05        # 滞后阈值（防止频繁切换）
-└── RF_Enable_SubType = true    # 启用 Sub-Type 分类
+Ea_run.mq5 (OnTick)
+    ↓
+StrategyRegistry.UpdateIndicators()
+    ↓
+CRegimeFilter.Update() → Q_score → State
+    ↓ (ACTIVE)
+StrategyManager.GetSignal() → Signal
+    ↓
+RiskPipeline.BuildTrade() → TradeRequest
+    ↓
+TradeExecutor.Execute() → MT5 API
 ```
 
 ## 策略族
 
-### M1: Mean Reversion Family
+### M3: Mean Reversion Family (v2.1.0)
 
 | 策略 | 说明 |
 |------|------|
@@ -242,7 +194,7 @@ Regime Filter 设置:
 | `Strategy_BollMR_RSI_Time` | + RSI + 时间过滤 |
 | `Strategy_BollMR_enhanced` | 时间 + 趋势 + 分层退出 |
 
-### M2: Trend Pullback Family
+### M4: Trend Pullback Family (v2.1.0)
 
 | 组件 | 说明 |
 |------|------|
@@ -263,73 +215,125 @@ Regime Filter 设置:
 | `COMBO_CONFLICT_SKIP` | 有反向信号时跳过（默认） |
 | `COMBO_BEST_CONFIDENCE` | 选择置信度最高的信号 |
 
+## M6-M8: AI 增强设计
+
+### M6: 参数优化 + 数据收集
+
+**目标**：优化参数配置 + 建立数据收集管道
+
+| 步骤 | 任务 | 输出 |
+|------|------|------|
+| M6.1 | Q-Score 阈值调优 | 最优阈值参数 |
+| M6.2 | 参数网格搜索 | 最优策略参数组合 |
+| M6.3 | Walk-Forward 验证 | 参数稳定性报告 |
+| M6.4 | 数据收集器实现 | 特征数据集 CSV |
+| M6.5 | 数据 Schema 定义 | ai_data_schema.md |
+
+**数据收集设计**：
+
+```python
+features = {
+    # 市场特征
+    "efficiency": float,
+    "false_breakout_rate": float,
+    "adx": float,
+    "atr": float,
+    "volatility_state": int,
+    "trend_strength": float,
+    
+    # Regime 状态
+    "regime_state": int,
+    "regime_type": int,
+    "sub_type": int,
+    "q_score": float,
+    
+    # 时间特征
+    "hour": int,
+    "day_of_week": int,
+    "session": int,
+    
+    # 决策与结果
+    "signal": int,
+    "position_size": float,
+    "sl_mult": float,
+    "tp_mult": float,
+    "pnl": float,
+    "holding_bars": int,
+    "win": bool
+}
+```
+
+### M7: ML 参数优化
+
+**目标**：用监督学习优化 Q-Score 权重和阈值
+
+| 步骤 | 任务 | 工具 |
+|------|------|------|
+| M7.1 | 特征工程 | pandas, sklearn |
+| M7.2 | 标签生成 | 自定义脚本 |
+| M7.3 | 模型训练 | XGBoost / LightGBM |
+| M7.4 | 特征重要性 | SHAP |
+| M7.5 | 参数导出 | 代码生成脚本 |
+
+### M8: RL 状态决策
+
+**目标**：用强化学习动态调整 Regime 参数
+
+```python
+class RegimeTradingEnv(gym.Env):
+    observation_space = Dict({
+        "efficiency": Box(0, 1),
+        "false_breakout_rate": Box(0, 1),
+        "adx": Box(0, 100),
+    })
+    
+    action_space = Dict({
+        "q_score_weight_eff": Box(0, 1),
+        "standby_threshold": Box(0.3, 0.7),
+    })
+    
+    def reward(self):
+        return sharpe_ratio - max_drawdown_penalty
+```
+
+## 参数配置
+
+### Regime Filter 参数
+
+```
+Regime Filter 设置:
+├── RF_Q_Score_Standby = 0.35  # STANDBY 阈值（建议调低）
+├── RF_Q_Score_Active = 0.45   # ACTIVE 阈值（建议调低）
+├── RF_Transition_Bars = 3     # 过渡期 K 线数
+├── RF_Hysteresis = 0.05       # 滞后阈值
+└── RF_Enable_SubType = true   # 启用 Sub-Type
+
+市场质量设置:
+├── MQ_Efficiency_Period = 20
+├── MQ_Efficiency_Baseline = 0.15
+├── MQ_FBR_Baseline = 0.50
+```
+
 ## 快速开始
 
 ### MQL5
 
 1. MT5 数据目录 → `MQL5/Experts` 放入项目
 2. 编译 `Ea_run.mq5`
-3. 图表加载 EA，调整参数：
-   - `BollMRVariant`: 选择策略变体
-   - Regime Filter 参数（可选）
+3. 图表加载 EA，调整参数
 
 ### Python 回测
 
 ```bash
 cd Python
-python -m venv venv
-venv\Scripts\activate
 pip install -r requirements.txt
-
-# Regime 验证
 python regime/validate_regime.py --data /path/to/XAUUSD_M5.csv
 ```
 
-## 信号文件格式
-
-`signals_mt5.csv` 输出：
-```
-time,signal,event,source,regime
-2025.01.30 15:00:00,1,1,BollMR,ACTIVE||Q0.72
-2025.01.30 15:05:00,0,,,STANDBY|T+V-A|Q0.42
-```
-
-regime 列格式：`状态|Sub-Type|Q_score`
-
-## 参数优化关键发现
-
-基于 XAUUSD M5 数据参数扫描：
-
-| 参数 | 优化值 | 说明 |
-|------|--------|------|
-| boll_dev | 2.5 | 更宽布林带过滤假信号 |
-| atr_vol_limit | 1.2 | 更严格波动率过滤 |
-| boll_period | 15-20 | 最佳范围 |
-| atr_period | 10 | 较短周期反应更快 |
-
-## Web UI
-
-```bash
-scripts\start_web_ui.cmd
-# 浏览器打开 http://127.0.0.1:8787
-```
-
-功能：
-- 修改配置参数
-- 上传 CSV 运行回测
-- 查看回测结果
-- 导出策略参数
-
 ## 版本历史
 
-### v2.2.0-development
-- 新增 Regime Filter（Python + MQL5）
-- 新增 StrategyRegistry 统一策略管理
-- 重构 Ea_run.mq5（减少约100行硬编码）
-- StatusPanel 新增 Regime 状态显示
-- 信号文件新增 regime 列
-
-### v2.1.x
-- M1/M2 策略族完整实现
-- 风控管道完善
-- 结构冷却器 + 加仓管理器
+| 版本 | 里程碑 | 说明 |
+|------|--------|------|
+| v2.2.0 | M5 | Regime Filter + StrategyRegistry + Q-Score优化 |
+| v2.1.0 | M3-M4 | Mean Reversion + TrendPullback 策略族 |
+| v2.0.0 | M1-M2 | 策略框架 + 风控管道 |
