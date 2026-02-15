@@ -95,25 +95,77 @@ main
 | R+N (正常震荡) | RANGE | NORMAL | 区间稳定 | scale=1.0 |
 | R+L (低波动震荡) | RANGE | LOW | 波动极低 | scale=0.3 |
 
-### Q-Score 计算
+---
 
-**公式**：基于基准值的动态评分
+## Q-Score 计算
+
+### 当前公式（v2.2.0）
+
+**基于基准值的相对评分**：
 
 ```
 Q = 0.5 + eff_score + fbr_score
 
-eff_score = 0.25 × (efficiency / baseline_eff - 1)
-fbr_score = 0.25 × (baseline_fbr - fbr) / baseline_fbr
+eff_score = w1 × (efficiency / baseline_eff - 1)
+fbr_score = w2 × (baseline_fbr - fbr) / baseline_fbr
 ```
 
-**基准值**：
-- `MQ_Efficiency_Baseline = 0.15`（震荡市正常效率）
-- `MQ_FBR_Baseline = 0.50`（震荡市正常假突破率）
+**当前参数**：
+- `w1 = w2 = 0.25`（权重）
+- `baseline_eff = 0.15`（效率基准）
+- `baseline_fbr = 0.50`（假突破率基准）
 
-**效果**：
-- 效率高于基准 → 加分
-- 假突破率低于基准 → 加分
-- Q 范围：0.1 ~ 0.9
+**设计依据**：
+
+| 设计点 | 说明 | 问题 |
+|--------|------|------|
+| 基准值 0.5 | 中性起点 | ✅ 合理 |
+| 权重 0.25 | 两个因子各贡献 ±0.25 | ⚠️ 未经验证 |
+| 基准值来源 | 回测数据观察 | ⚠️ 可能不稳定 |
+| 仅 2 维度 | eff + fbr | ⚠️ 信息不足 |
+| 线性关系 | 线性贡献 | ⚠️ 可能非线性 |
+
+### 优化路径
+
+**Phase 1: 特征扩展**
+
+新增维度：
+
+| 维度 | 计算方式 | 价值 | 优先级 |
+|------|----------|------|--------|
+| **adx_score** | ADX / 50 - 1 | 趋势强度 | 高 |
+| **atr_ratio** | ATR / MA(ATR, 20) | 波动率异常 | 高 |
+| **session_weight** | 按时段调整基准 | 时段差异 | 中 |
+| **volume_ratio** | Volume / MA(Volume) | 流动性 | 中 |
+| **momentum_persist** | 连续同向K线比例 | 动量持续 | 低 |
+
+**扩展后公式**：
+
+```
+Q = w0 + w1×eff_score + w2×fbr_score + w3×adx_score + w4×atr_ratio_score
+```
+
+**Phase 2: 权重优化（ML）**
+
+使用监督学习学习最优权重：
+
+```python
+# 目标：最大化 Sharpe / 胜率
+# 特征：[eff, fbr, adx, atr_ratio, ...]
+# 标签：未来 N 根 K 线的胜率/盈亏比
+# 模型：线性回归 / XGBoost
+```
+
+**Phase 3: 动态基准（RL）**
+
+基准值根据市场环境动态调整：
+
+```python
+baseline_eff = f(volatility_state, session)
+baseline_fbr = f(volatility_state, session)
+```
+
+---
 
 ## 代码架构
 
@@ -151,8 +203,12 @@ quant-ai-filters/
 ├── Indicators/             # 指标模块
 │   ├── Bollinger.mqh
 │   └── ATR.mqh
-└── Python/                 # Python 回测工具
-    └── regime/             # Regime Filter Python 模块
+├── Python/                 # Python 回测工具
+│   ├── regime_param_optimize.py  # M6.2 参数网格搜索
+│   ├── data_collector.py         # M6.4 数据收集器
+│   └── regime/             # Regime Filter Python 模块
+└── docs/
+    └── ai_data_schema.md   # M6.5 数据 Schema
 ```
 
 ### 核心模块职责
@@ -181,6 +237,8 @@ RiskPipeline.BuildTrade() → TradeRequest
     ↓
 TradeExecutor.Execute() → MT5 API
 ```
+
+---
 
 ## 策略族
 
@@ -215,86 +273,203 @@ TradeExecutor.Execute() → MT5 API
 | `COMBO_CONFLICT_SKIP` | 有反向信号时跳过（默认） |
 | `COMBO_BEST_CONFIDENCE` | 选择置信度最高的信号 |
 
-## M6-M8: AI 增强设计
+---
+
+## M6-M8: AI 增强详细设计
 
 ### M6: 参数优化 + 数据收集
 
-**目标**：优化参数配置 + 建立数据收集管道
+#### M6.1 Q-Score 优化
 
-| 步骤 | 任务 | 输出 |
+| 任务 | 状态 | 说明 |
 |------|------|------|
-| M6.1 | Q-Score 阈值调优 | 最优阈值参数 |
-| M6.2 | 参数网格搜索 | 最优策略参数组合 |
-| M6.3 | Walk-Forward 验证 | 参数稳定性报告 |
-| M6.4 | 数据收集器实现 | 特征数据集 CSV |
-| M6.5 | 数据 Schema 定义 | ai_data_schema.md |
+| M6.1.1 | ✅ | 新公式实现（基准值 + 相对评分） |
+| M6.1.2 | ✅ | 阈值调整（Standby: 0.35, Active: 0.45） |
+| M6.1.3 | ⏳ | ADX 维度加入 |
+| M6.1.4 | ⏳ | ATR_ratio 维度加入 |
+| M6.1.5 | ⏳ | Session 权重动态化 |
 
-**数据收集设计**：
+#### M6.2 参数网格搜索
 
-```python
-features = {
-    # 市场特征
-    "efficiency": float,
-    "false_breakout_rate": float,
-    "adx": float,
-    "atr": float,
-    "volatility_state": int,
-    "trend_strength": float,
-    
-    # Regime 状态
-    "regime_state": int,
-    "regime_type": int,
-    "sub_type": int,
-    "q_score": float,
-    
-    # 时间特征
-    "hour": int,
-    "day_of_week": int,
-    "session": int,
-    
-    # 决策与结果
-    "signal": int,
-    "position_size": float,
-    "sl_mult": float,
-    "tp_mult": float,
-    "pnl": float,
-    "holding_bars": int,
-    "win": bool
-}
+```bash
+# 运行参数优化
+cd Python
+python regime_param_optimize.py \
+  --data "E:/mt5_test_datas/mt5/XAUUSD_M5.csv" \
+  --output data/regime_optimize_results.csv
 ```
+
+#### M6.4 数据收集
+
+```bash
+# 收集训练数据
+cd Python
+python data_collector.py \
+  --data "E:/mt5_test_datas/mt5/XAUUSD_M5.csv" \
+  --output data/features_train.csv \
+  --label
+```
+
+**输出字段**：见 `docs/ai_data_schema.md`
+
+#### M6.3 Walk-Forward 验证
+
+```
+数据分割：
+├── Train: 2024.01 - 2024.06
+├── Valid: 2024.07 - 2024.09
+└── Test:  2024.10 - 2024.12
+
+滚动窗口：
+Window 1: Train[1-6月] → Test[7月]
+Window 2: Train[2-7月] → Test[8月]
+...
+```
+
+---
 
 ### M7: ML 参数优化
 
-**目标**：用监督学习优化 Q-Score 权重和阈值
+#### 7.1 特征工程
 
-| 步骤 | 任务 | 工具 |
-|------|------|------|
-| M7.1 | 特征工程 | pandas, sklearn |
-| M7.2 | 标签生成 | 自定义脚本 |
-| M7.3 | 模型训练 | XGBoost / LightGBM |
-| M7.4 | 特征重要性 | SHAP |
-| M7.5 | 参数导出 | 代码生成脚本 |
+```python
+# 原始特征
+raw_features = ['efficiency', 'false_breakout_rate', 'adx', 'atr', 
+                'regime_state', 'sub_type', 'hour', 'session']
+
+# 时序特征
+lag_features = ['efficiency_lag1', 'efficiency_lag5', 
+                'fbr_lag1', 'fbr_lag5']
+
+# 交叉特征
+cross_features = ['eff_x_adx', 'fbr_x_volatility']
+```
+
+#### 7.2 标签生成
+
+| 标签类型 | 定义 | 用途 |
+|----------|------|------|
+| win_rate | 未来 N 根 K 线胜率 | 分类任务 |
+| pnl_ratio | 未来盈亏比 | 回归任务 |
+| sharpe | 未来收益夏普比 | 回归任务 |
+
+#### 7.3 模型训练
+
+```python
+# 特征 → Q-Score 权重
+model = XGBRegressor(
+    objective='reg:squarederror',
+    n_estimators=100,
+    max_depth=5,
+)
+
+# 训练
+model.fit(X_train, y_train)
+
+# 提取特征重要性
+importance = model.feature_importances_
+```
+
+#### 7.4 参数导出
+
+```python
+# 生成 MQL5 代码
+def export_to_mql5(weights, baselines):
+    code = f"""
+    // ML 优化后的参数
+    double w_eff = {weights['eff']:.4f};
+    double w_fbr = {weights['fbr']:.4f};
+    double w_adx = {weights['adx']:.4f};
+    double baseline_eff = {baselines['eff']:.4f};
+    double baseline_fbr = {baselines['fbr']:.4f};
+    """
+    return code
+```
+
+---
 
 ### M8: RL 状态决策
 
-**目标**：用强化学习动态调整 Regime 参数
+#### 8.1 环境设计
 
 ```python
+import gym
+from gym import spaces
+
 class RegimeTradingEnv(gym.Env):
-    observation_space = Dict({
-        "efficiency": Box(0, 1),
-        "false_breakout_rate": Box(0, 1),
-        "adx": Box(0, 100),
-    })
+    def __init__(self, df, initial_balance=10000):
+        super().__init__()
+        
+        # 状态空间
+        self.observation_space = spaces.Dict({
+            "efficiency": spaces.Box(0, 1, shape=(1,)),
+            "false_breakout_rate": spaces.Box(0, 1, shape=(1,)),
+            "adx": spaces.Box(0, 100, shape=(1,)),
+            "atr_ratio": spaces.Box(0, 3, shape=(1,)),
+            "session": spaces.Discrete(4),
+            "volatility_state": spaces.Discrete(3),
+        })
+        
+        # 动作空间：调整参数
+        self.action_space = spaces.Dict({
+            "w_eff": spaces.Box(0.1, 0.4, shape=(1,)),      # 效率权重
+            "w_fbr": spaces.Box(0.1, 0.4, shape=(1,)),      # 假突破权重
+            "q_standby": spaces.Box(0.25, 0.45, shape=(1,)), # STANDBY 阈值
+            "q_active": spaces.Box(0.40, 0.60, shape=(1,)),  # ACTIVE 阈值
+        })
     
-    action_space = Dict({
-        "q_score_weight_eff": Box(0, 1),
-        "standby_threshold": Box(0.3, 0.7),
-    })
+    def step(self, action):
+        # 应用动作，更新参数
+        # 运行一步交易
+        # 计算奖励
+        reward = self._calculate_reward()
+        return observation, reward, done, info
     
-    def reward(self):
-        return sharpe_ratio - max_drawdown_penalty
+    def _calculate_reward(self):
+        # 奖励函数：夏普比 - 回撤惩罚
+        sharpe = self.returns.mean() / (self.returns.std() + 1e-8) * np.sqrt(252)
+        dd_penalty = max(0, self.max_drawdown - 0.1) * 10
+        return sharpe - dd_penalty
 ```
+
+#### 8.2 训练流程
+
+```python
+from stable_baselines3 import PPO
+
+# 创建环境
+env = RegimeTradingEnv(df_train)
+
+# 创建模型
+model = PPO(
+    "MultiInputPolicy",
+    env,
+    learning_rate=3e-4,
+    n_steps=2048,
+    batch_size=64,
+    verbose=1,
+)
+
+# 训练
+model.learn(total_timesteps=100000)
+
+# 保存
+model.save("models/rl_regime_policy.zip")
+```
+
+#### 8.3 部署架构
+
+```
+训练环境 (Python)
+    ↓ 训练完成
+ONNX 模型导出
+    ↓ 
+MQL5 推理集成
+    ↓
+EA 实时推理
+```
+
+---
 
 ## 参数配置
 
@@ -302,8 +477,8 @@ class RegimeTradingEnv(gym.Env):
 
 ```
 Regime Filter 设置:
-├── RF_Q_Score_Standby = 0.35  # STANDBY 阈值（建议调低）
-├── RF_Q_Score_Active = 0.45   # ACTIVE 阈值（建议调低）
+├── RF_Q_Score_Standby = 0.35  # STANDBY 阈值
+├── RF_Q_Score_Active = 0.45   # ACTIVE 阈值
 ├── RF_Transition_Bars = 3     # 过渡期 K 线数
 ├── RF_Hysteresis = 0.05       # 滞后阈值
 └── RF_Enable_SubType = true   # 启用 Sub-Type
@@ -313,6 +488,8 @@ Regime Filter 设置:
 ├── MQ_Efficiency_Baseline = 0.15
 ├── MQ_FBR_Baseline = 0.50
 ```
+
+---
 
 ## 快速开始
 
@@ -327,8 +504,15 @@ Regime Filter 设置:
 ```bash
 cd Python
 pip install -r requirements.txt
-python regime/validate_regime.py --data /path/to/XAUUSD_M5.csv
+
+# Regime 参数优化
+python regime_param_optimize.py --data /path/to/XAUUSD_M5.csv
+
+# 数据收集
+python data_collector.py --data /path/to/XAUUSD_M5.csv --label
 ```
+
+---
 
 ## 版本历史
 

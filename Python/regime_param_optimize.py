@@ -194,7 +194,7 @@ def main():
             q_score_active=q_a,
             transition_bars=3,
             hysteresis=0.05,
-            enable_sub_type=True,
+            enable_subtype=True,
         )
         
         try:
