@@ -6,6 +6,7 @@
 #define __LOSING_STREAK_GUARD_MQH__
 
 // 输入参数 (MaxLosingStreak, CooldownBarsAfter) 由包含此文件的模块提供
+#include "../Inputs_All.mqh"
 
 class LosingStreakGuard
 {

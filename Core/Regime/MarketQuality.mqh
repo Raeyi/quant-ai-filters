@@ -16,6 +16,8 @@ input int     MQ_Breakout_Lookback = 5;        // 突破回看周期
 input double  MQ_Breakout_Threshold = 0.3;     // 假突破阈值
 input int     MQ_False_Breakout_Window = 30;   // 假突破率窗口
 input double  MQ_Q_Score_Threshold = 0.5;      // Q_score 阈值
+input double  MQ_Efficiency_Baseline = 0.15;   // 效率基准值（震荡市正常水平）
+input double  MQ_FBR_Baseline = 0.50;          // 假突破率基准值（震荡市正常水平）
 
 //+------------------------------------------------------------------+
 //| 市场质量类                                                        |
@@ -29,6 +31,8 @@ private:
     double  m_breakout_threshold;
     int     m_false_breakout_window;
     double  m_q_score_threshold;
+    double  m_efficiency_baseline;
+    double  m_fbr_baseline;
     
     // 计算结果
     double  m_efficiency;
@@ -52,6 +56,8 @@ public:
         m_breakout_threshold(0.3),
         m_false_breakout_window(30),
         m_q_score_threshold(0.5),
+        m_efficiency_baseline(0.15),
+        m_fbr_baseline(0.50),
         m_efficiency(0.5),
         m_false_breakout_rate(0.0),
         m_q_score(0.5),
@@ -76,6 +82,8 @@ public:
         m_breakout_threshold = MQ_Breakout_Threshold;
         m_false_breakout_window = MQ_False_Breakout_Window;
         m_q_score_threshold = MQ_Q_Score_Threshold;
+        m_efficiency_baseline = MQ_Efficiency_Baseline;
+        m_fbr_baseline = MQ_FBR_Baseline;
     }
     
     //+--------------------------------------------------------------
@@ -186,14 +194,25 @@ public:
         // 计算假突破率
         m_false_breakout_rate = CalculateFalseBreakoutRate();
         
-        // 计算 Q_score
-        // Q = 0.4 * efficiency + 0.3 * (1 - false_breakout_rate) + 0.3 * 0.5
-        m_q_score = 0.4 * m_efficiency + 
-                    0.3 * (1.0 - m_false_breakout_rate) + 
-                    0.3 * 0.5;
+        // 计算 Q_score（新公式：以基准值为中心）
+        // Q = 0.5 + 效率贡献 + 假突破惩罚
+        // 效率贡献：高于基准加分，低于基准减分
+        // 假突破惩罚：低于基准加分，高于基准减分
+        double eff_score = 0.25 * (m_efficiency / m_efficiency_baseline - 1.0);
+        double fbr_score = 0.25 * (m_fbr_baseline - m_false_breakout_rate) / m_fbr_baseline;
+        
+        m_q_score = MathMax(0.1, MathMin(0.9, 0.5 + eff_score + fbr_score));
         
         // 判断是否可交易
         m_is_tradable = (m_q_score >= m_q_score_threshold);
+        
+        // 调试日志：每100根K线输出一次
+        static int debug_counter = 0;
+        if(++debug_counter % 100 == 0)
+        {
+            Print(StringFormat("[MarketQuality] eff=%.3f fbr=%.3f Q=%.3f (eff_s=%.2f fbr_s=%.2f)",
+                m_efficiency, m_false_breakout_rate, m_q_score, eff_score, fbr_score));
+        }
         
         return true;
     }

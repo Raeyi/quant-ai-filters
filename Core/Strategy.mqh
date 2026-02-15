@@ -20,6 +20,17 @@ public:
 
     // 策略名称（用于日志 / AI / 投票）
     virtual string Name() = 0;
+    
+    // ===== 可选方法（子类可覆盖） =====
+    
+    // 初始化（默认空实现）
+    virtual bool Init() { return true; }
+    
+    // 更新指标（默认空实现）
+    virtual bool UpdateIndicators() { return true; }
+    
+    // 时间过滤检查（默认通过）
+    virtual bool TimeFilterOK() { return true; }
 };
 
 #endif

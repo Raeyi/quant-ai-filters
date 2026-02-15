@@ -140,7 +140,7 @@ public:
       y      = 10;
       line   = 15;
       panel_width  = 320;
-      panel_height = 310;  // 增加高度以容纳冷却状态行
+      panel_height = 330;  // 增加高度以容纳Regime和冷却状态行
       panel_border_color = clrDodgerBlue;
       panel_bg_color = clrBlack;
       font_size = 9;
@@ -169,6 +169,7 @@ public:
       CreateLabel("POSITION_CNT", line * i++);
       CreateLabel("TODAY_TRADES", line * i++);
       CreateLabel("CONSEC_LOSS",  line * i++); i++;
+      CreateLabel("REGIME_STATE", line * i++);  // Regime 状态
       CreateLabel("NO_TRADE",     line * i++);
       CreateLabel("TIME_FILTER",  line * i++);
       CreateLabel("COOLDOWN",     line * i++);  // 结构冷却器状态
@@ -184,7 +185,10 @@ public:
                const string time_reason,
                bool structural_cooldown_active = false,
                string structural_cooldown_reason = "",
-               int structural_cooldown_remaining = 0)
+               int structural_cooldown_remaining = 0,
+               string regime_state_str = "ACTIVE",
+               string regime_subtype_str = "",
+               double regime_q_score = 0.5)
    {
       rp.RefreshStatus();
 
@@ -226,7 +230,16 @@ public:
       SetText("CONSEC_LOSS", "连续止损数: " + IntegerToString(consec_losses),
               consec_losses > 0 ? clrOrange : clrWhite);
 
-      bool allow_entry_time = rp.IsEntryAllowed() && time_allowed;
+      // Regime 状态显示
+      string regime_text = "Regime: " + regime_state_str;
+      if(regime_subtype_str != "")
+         regime_text += " [" + regime_subtype_str + "]";
+      regime_text += " Q=" + DoubleToString(regime_q_score, 2);
+      color regime_color = (regime_state_str == "ACTIVE") ? clrLime : 
+                          (regime_state_str == "STANDBY") ? clrOrange : clrYellow;
+      SetText("REGIME_STATE", regime_text, regime_color);
+
+      bool allow_entry_time = rp.IsEntryAllowed() && time_allowed && (regime_state_str == "ACTIVE");
       string no_trade_text = "禁止交易: " + string(allow_entry_time ? "否" : "是");
       if(!allow_entry_time)
       {

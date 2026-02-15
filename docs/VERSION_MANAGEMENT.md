@@ -3,7 +3,7 @@
 ## 版本号规则（语义化版本）
 
 ```
-MAJOR.MINOR.PATCH (如 2.1.0)
+MAJOR.MINOR.PATCH (如 2.2.0)
 
 - MAJOR: 重大架构变更（如 2.x → 3.x）
 - MINOR: 里程碑完成（M1=1, M2=2, M3=3）
@@ -14,7 +14,7 @@ MAJOR.MINOR.PATCH (如 2.1.0)
 
 ### 方式一：自动（推荐）
 
-里程碑完成后合并到 `EA_2.0.0` 分支，CI/CD 自动：
+里程碑完成后合并到 `EA_2.2.0` 分支，CI/CD 自动：
 1. 更新 `Core/Version.mqh` 版本号
 2. 编译 `Ea_run.ex5`
 3. 创建 GitHub Release
@@ -25,17 +25,17 @@ MAJOR.MINOR.PATCH (如 2.1.0)
 1. 更新 `Core/Version.mqh`：
 ```mqh
 #define EA_VERSION_MAJOR    2
-#define EA_VERSION_MINOR    1    // M1 完成
+#define EA_VERSION_MINOR    2    // Regime Filter 完成
 #define EA_VERSION_PATCH    0
-#define EA_VERSION_STRING   "2.1.0"
+#define EA_VERSION_STRING   "2.2.0"
 ```
 
 2. 提交并打 tag：
 ```bash
 git add Core/Version.mqh
-git commit -m "chore: bump version to 2.1.0"
-git tag v2.1.0
-git push origin EA_2.0.0 --tags
+git commit -m "chore: bump version to 2.2.0"
+git tag v2.2.0
+git push origin EA_2.2.0 --tags
 ```
 
 ## 版本历史
@@ -44,6 +44,7 @@ git push origin EA_2.0.0 --tags
 |------|--------|------|------|
 | 2.0.0 | - | 2025-01 | 初始版本 |
 | 2.1.0 | M1+M2 | 2026-02 | Mean Reversion + TrendPullback + Combo 优化 |
+| 2.2.0 | Regime | 2026-02 | Regime Filter + StrategyRegistry + Q-Score优化 |
 
 ## CI/CD 配置
 
@@ -71,17 +72,18 @@ git push origin EA_2.0.0 --tags
 ## 分支策略
 
 ```
-EA_2.1.0 (当前主分支)
+EA_2.2.0 (当前主分支)
     ↑
     ├── milestone/m1-mean-reversion-family → 已合并 → v2.1.0
     ├── milestone/m2-trend-pullback       → 已合并 → v2.1.0
-    └── milestone/m3-xauusd-alpha         → 待开发 → v2.2.0
+    ├── feature/v2.2.0-development        → 已合并 → v2.2.0
+    └── milestone/m3-xauusd-alpha         → 待开发 → v2.3.0
 ```
 
 ### 合并规则
 
-1. 里程碑开发在 `milestone/m*` 分支
-2. 完成后创建 PR 合并到 `EA_2.0.0`
+1. 里程碑开发在 `milestone/m*` 或 `feature/*` 分支
+2. 完成后创建 PR 合并到 `EA_2.2.0`
 3. PR 合并后自动触发 CI/CD
 4. 版本号自动更新
 

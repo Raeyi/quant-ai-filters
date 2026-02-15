@@ -4,148 +4,57 @@
 
 - 目标：XAUUSD 小周期策略的可插拔体系（MQL5 实盘 + Python 回测/研究）
 - 结构：**Regime 引擎 + 策略选择器 + 策略族 + 风控层**
+- 版本：v2.2.0-development
 
-## 系统架构（选择模式 v2）
+## 系统架构
 
 ### Alpha 核心来源
 
 > 市场不奖励"正确的结构"，市场只奖励"结构中被忽略的偏差"
 
-| Alpha 来源 | 说明 |
-|------------|------|
-| **Market Quality Score** | 决定"何时不用策略"，Q<0.5 → STANDBY |
-| **Regime Sub-Type** | 区分"真趋势"vs"情绪脉冲" |
-| **Transition Matrix** | 提前布局下一状态 |
-| **时间 × Regime** | 同一 Regime 不同时段权重不同 |
-| **风险暴露结构** | Sub-Type → 不同止损/仓位参数 |
+|| Alpha 来源 | 说明 |
+||------------|------|
+|| **Market Quality Score** | 决定"何时不用策略"，Q<0.5 → STANDBY |
+|| **Regime Sub-Type** | 区分"真趋势"vs"情绪脉冲" |
+|| **Transition Matrix** | 提前布局下一状态 |
+|| **时间 × Regime** | 同一 Regime 不同时段权重不同 |
+|| **风险暴露结构** | Sub-Type → 不同止损/仓位参数 |
 
-### 架构图
+### Regime 状态机
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  Market Regime Engine v2                     │
+│                   Regime Filter 状态机                       │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 1: Base Regime (H1)                                   │
-│  T+V / T+L / R+V / R+L                                       │
-│                         ↓                                    │
-│  Layer 2: Market Quality Score (M15)                         │
-│  • Trend Efficiency (价格移动 / ATR消耗)                     │
-│  • False Breakout Rate                                       │
-│  输出: Q_score (0.0 ~ 1.0)                                   │
-│                         ↓                                    │
-│  Layer 3: Regime Sub-Type                                    │
-│  T+V-A: 情绪脉冲 (高波动低效率) → scale=0.5                  │
-│  T+V-B: 真趋势 (高波动高效率) → scale=1.2 ← 重仓机会         │
-│  R+V-A: 消息震荡 (高频反转) → STANDBY                        │
-│  R+V-B: 假突破密集 → 等待确认                                │
-│                         ↓                                    │
-│  Layer 4: Transition Probability                             │
-│  P(T+V-B → R+V-A) = 0.35 → 提前布局下一状态                  │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Strategy Selector v2                            │
-│  决策矩阵: Sub-Type × Session × Quality → Action             │
-│                                                              │
-│  Sub-Type    │ Session │ Quality │ Action                   │
-│  ────────────┼─────────┼─────────┼──────────────────────────│
-│  T+V-B       │ US      │ Q>0.7   │ TP × 1.2 scale           │
-│  T+V-A       │ US      │ Q>0.5   │ TP × 0.5 scale           │
-│  T+V-A       │ EU      │ Q>0.5   │ STANDBY                  │
-│  R+V-A       │ Any     │ Any     │ STANDBY                  │
-│  R+L         │ ASIA    │ Q>0.6   │ BollMR × 1.0             │
-│  R+L         │ US      │ Q>0.6   │ BollMR × 0.7             │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Risk Exposure Structure                         │
-│  Sub-Type → 风险参数映射                                     │
-│                                                              │
-│  Sub-Type    │ SL_mult │ TP_mult │ Position │ 加仓          │
-│  ────────────┼─────────┼─────────┼──────────┼──────────────│
-│  T+V-B       │ 1.5     │ 3.0     │ 100%     │ 允许          │
-│  T+V-A       │ 0.8     │ 1.5     │ 50%      │ 禁止          │
-│  R+L (ASIA)  │ 1.0     │ 1.5     │ 100%     │ 禁止          │
-│  R+L (US)    │ 1.2     │ 1.2     │ 70%      │ 禁止          │
+│                                                             │
+│    Q_score > 0.6 + hysteresis                              │
+│    ┌──────────────────────────────────────┐                │
+│    │                                      │                │
+│    ▼                                      │                │
+│ ┌────────┐  Q < 0.5 - hysteresis  ┌───────────┐           │
+│ │ ACTIVE │ ──────────────────────▶│  STANDBY  │           │
+│ └────────┘                        └───────────┘           │
+│    ▲                                      │                │
+│    │         ┌─────────────┐              │                │
+│    └─────────│ TRANSITION  │◀─────────────┘                │
+│              └─────────────┘  连续确认 N bars               │
+│                                                             │
+│  STANDBY 时：禁止新开仓信号                                   │
+│  ACTIVE 时：允许所有交易信号                                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Regime 定义（含 Sub-Type）
+### Sub-Type 分类
 
-| Regime | 趋势 | 波动率 | Sub-Type | 特征 | 激活策略 |
-|--------|------|--------|----------|------|----------|
-| **T+V** | 强趋势 | 高波动 | T+V-A | 情绪脉冲，低效率 | TrendPB × 0.5 |
-| **T+V** | 强趋势 | 高波动 | **T+V-B** | 真趋势，高效率 | TrendPB × 1.2 |
-| **T+L** | 强趋势 | 低波动 | - | 稳步趋势 | TrendPullback |
-| **R+V** | 震荡 | 高波动 | R+V-A | 消息震荡 | **STANDBY** |
-| **R+V** | 震荡 | 高波动 | R+V-B | 假突破密集 | **STANDBY** |
-| **R+L** | 震荡 | 低波动 | - | 区间稳定 | BollMR |
-
-### 切换稳态规则
-
-| 维度 | 设计 |
-|------|------|
-| **周期** | H1 主判定，M15 过滤 |
-| **切换** | 连续确认 + 置信度衰减 |
-| **Quality** | Q_score < 0.5 → STANDBY（即使 Regime 匹配） |
-| **持仓** | 切换时保留，新策略不开新仓 |
-| **过渡** | TRANSITION 状态，等待置信度稳定 |
-| **仓位** | Sub-Type + Session → position_scale + SL/TP 参数 |
-
-### 时间权重矩阵
-
-```python
-TIME_REGIME_WEIGHTS = {
-    'T+V': {'asia': 0.6, 'europe': 1.0, 'us': 1.3, 'overlap': 1.2},
-    'R+L': {'asia': 1.2, 'europe': 1.0, 'us': 0.7, 'overlap': 0.8},
-    # ...
-}
-
-# 特殊时段: 数据发布前后 30min 权重 × 0.3
-```
-
-### Regime Transition Matrix
-
-```
-基于 XAUUSD 历史统计:
-
-         → T+V  T+L  R+V  R+L
-T+V       0.45 0.25 0.20 0.10
-T+L       0.15 0.55 0.15 0.15
-R+V       0.20 0.10 0.40 0.30
-R+L       0.10 0.20 0.25 0.45
-
-应用: R+L 持续 3 根 H1 后，P(→T+L)=0.20，可提前准备趋势策略
-```
-
-### Regime 模块文件结构
-
-```
-Core/Regime/
-├── RegimeTypes.mqh          # 类型定义（含 Sub-Type）
-├── RegimeIndicators.mqh     # 指标计算
-├── MarketQuality.mqh        # Market Quality Score
-├── RegimeState.mqh          # 置信度模型
-├── RegimeDetector.mqh       # H1 主判定
-├── SubTypeClassifier.mqh    # Sub-Type 分类
-├── TransitionMatrix.mqh     # 转移概率
-├── StrategySelector.mqh     # 策略选择器 v2
-├── RiskExposure.mqh         # 风险暴露结构
-└── RegimeManager.mqh        # 综合管理
-
-Python/regime/
-├── __init__.py
-├── types.py                 # 类型定义
-├── indicators.py            # 基础指标
-├── quality.py               # Market Quality Score
-├── state.py                 # 置信度模型
-├── detector.py              # Regime 检测
-├── subtype.py               # Sub-Type 分类
-├── transition.py            # Transition Matrix
-├── selector.py              # 策略选择器
-├── risk_exposure.py         # 风险暴露结构
-└── backtest_regime.py       # 回测验证
-```
+| Sub-Type | Regime | Volatility | 特征 | 建议 |
+|----------|--------|------------|------|------|
+| T+V-B (真趋势) | TREND | HIGH | 高效率 + 高波动 | scale=1.2, 重仓机会 |
+| T+V-A (情绪脉冲) | TREND | HIGH | 低效率 + 高波动 | scale=0.5, 轻仓 |
+| T+N (温和趋势) | TREND | NORMAL | 稳步趋势 | scale=0.8 |
+| R+V-A (消息震荡) | RANGE | HIGH | 高反转率 | **STANDBY** |
+| R+V-B (假突破密集) | RANGE | HIGH | 高假突破率 | scale=0.5, 等待确认 |
+| R+N (正常震荡) | RANGE | NORMAL | 区间稳定 | scale=1.0 |
+| R+L (低波动震荡) | RANGE | LOW | 波动极低 | scale=0.3 |
 
 ## 代码架构
 
@@ -154,40 +63,45 @@ Python/regime/
 ```
 quant-ai-filters/
 ├── Ea_run.mq5              # EA 主入口
-├── Core/                   # 核心模块
-│   ├── Signal.mqh          # 信号结构体定义
+├── Core/
+│   ├── Signal.mqh          # 信号结构体
 │   ├── TradeTypes.mqh      # 交易类型枚举
 │   ├── TradeExecutor.mqh   # 交易执行器
-│   ├── Strategy.mqh        # 策略接口
-│   ├── StrategyManager.mqh # 策略管理器
+│   ├── Strategy.mqh        # 策略接口（含 Init/UpdateIndicators/TimeFilterOK）
+│   ├── StrategyManager.mqh # 策略调度器
+│   ├── StrategyRegistry.mqh # 策略注册表（统一生命周期管理）【新增】
 │   ├── PositionCoordinator.mqh # 持仓协调器
 │   ├── Inputs_All.mqh      # 统一输入参数
+│   ├── Regime/             # Regime Filter 模块【新增】
+│   │   ├── RegimeTypes.mqh     # 类型定义 + 辅助函数
+│   │   ├── RegimeIndicators.mqh # ADX/ATR 指标
+│   │   ├── MarketQuality.mqh   # Q_score 计算
+│   │   └── RegimeFilter.mqh    # 主过滤类
 │   ├── Risk/               # 风控子模块
 │   │   ├── RiskPipeline.mqh    # 风控管道（统一入口）
-│   │   ├── Cooldown.mqh        # 普通冷却器
-│   │   ├── LosingStreakGuard.mqh # 连亏冷却器
 │   │   ├── StructuralCooldown.mqh # 结构冷却器
-│   │   ├── AccountRisk.mqh     # 账户风险控制
-│   │   ├── PositionRisk.mqh    # 仓位风险控制
-│   │   ├── TradeRisk.mqh       # 交易风险控制
-│   │   ├── PositionSizer.mqh   # 仓位计算器
 │   │   ├── AddPositionManager.mqh # 加仓管理器
-│   │   ├── TimeStop.mqh        # 时间止损
-│   │   └── RiskStatus.mqh      # 风控状态
+│   │   └── ...
 │   └── UI/
-│       └── StatusPanel.mqh     # 状态面板
+│       └── StatusPanel.mqh     # 状态面板（含 Regime 显示）
 ├── Strategies/             # 策略实现
-│   ├── Strategy_BollMR_Base.mqh
-│   ├── Strategy_BollMR_RSI.mqh
-│   ├── Strategy_BollMR_Time.mqh
-│   ├── Strategy_BollMR_RSI_Time.mqh
 │   ├── Strategy_BollMR_enhanced.mqh
+│   ├── Strategy_BollMR_Base.mqh
 │   ├── Strategy_TrendPullback.mqh
 │   └── Strategy_Combo.mqh
 ├── Indicators/             # 指标模块
 │   ├── Bollinger.mqh
 │   └── ATR.mqh
 └── Python/                 # Python 回测工具
+    └── regime/             # Regime Filter Python 模块【新增】
+        ├── regime_indicators.py
+        ├── regime_filter.py
+        ├── regime_subtype.py
+        ├── strategy_selector.py
+        ├── transition_matrix.py
+        ├── risk_exposure.py
+        ├── backtest_with_regime.py
+        └── validate_regime.py
 ```
 
 ### 核心模块职责
@@ -195,179 +109,159 @@ quant-ai-filters/
 | 模块 | 职责 | 说明 |
 |------|------|------|
 | `Ea_run.mq5` | 主入口 | 初始化、事件处理、协调各模块 |
-| `Signal` | 信号载体 | 策略产生的交易信号，包含方向、价格、ATR等上下文 |
-| `StrategyManager` | 策略调度 | 遍历已注册策略，获取第一个有效信号 |
-| `IStrategy` | 策略接口 | 定义 `GenerateSignal()` 方法，策略只负责信号生成 |
-| `RiskPipeline` | 风控管道 | 统一管理所有风控检查，是风控的**唯一入口** |
-| `TradeExecutor` | 交易执行 | 封装 MT5 交易 API，执行买卖操作 |
-| `PositionCoordinator` | 持仓协调 | 单品种单向一仓管理 |
+| `StrategyRegistry` | 策略管理 | 统一注册、选择、初始化、更新策略 |
+| `CRegimeFilter` | 市场状态过滤 | Q_score 计算，STANDBY 时拒绝开仓 |
+| `StrategyManager` | 策略调度 | 获取策略信号 |
+| `RiskPipeline` | 风控管道 | 统一管理所有风控检查 |
+| `TradeExecutor` | 交易执行 | 封装 MT5 交易 API |
 
-### 数据流向（集成 Regime 后）
+### 数据流向
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Ea_run.mq5                              │
-│  (OnTick / OnTimer)                                            │
+│                      OnTick / OnTimer                           │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     RegimeManager                               │
-│  H1 判定 Regime → M15 过滤 → 输出 (Regime, Confidence, Scale)   │
+│                     StrategyRegistry                            │
+│  registry.UpdateIndicators() → 统一更新所有策略指标               │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   StrategySelector                              │
-│  Regime → Active Strategy (唯一)                               │
-│  其他策略 → STANDBY                                             │
+│                     CRegimeFilter                               │
+│  Update(close, high, low) → Q_score → State (ACTIVE/STANDBY)   │
+│  STANDBY 时：拒绝新开仓信号                                       │
 └───────────────────────────┬─────────────────────────────────────┘
-                            │ Signal (from active strategy)
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   StrategyManager                               │
+│  GetSignal() → Signal                                          │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ Signal
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      RiskPipeline                               │
-│  BuildTrade(signal, req) × PositionScale                        │
+│  BuildTrade(signal, req)                                       │
 │  ├── AccountRisk: 日内亏损限制                                   │
 │  ├── LosingStreakGuard: 连续止损冷却                             │
-│  ├── Cooldown: 交易后普通冷却                                    │
-│  ├── StructuralCooldown: 结构冷却（假突破保护）                   │
-│  ├── PositionRisk: 持仓检查                                     │
-│  ├── PositionSizer: 仓位计算 × Scale                            │
+│  ├── StructuralCooldown: 结构冷却                               │
+│  ├── PositionSizer: 仓位计算                                    │
 │  └── TradeRisk: SL/TP 验证                                      │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ TradeRequest
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     TradeExecutor                               │
-│  Execute(req) → 调用 MT5 API 下单                               │
+│  Execute(req) → MT5 API                                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 风控管道设计
+### StatusPanel 显示
 
-**核心理念**：所有冷却逻辑由 `RiskPipeline` 统一管理，策略只负责信号生成。
-
+面板新增 Regime 状态行：
 ```
-RiskPipeline
-├── 普通冷却器 (Cooldown)
-│   └── 每笔交易后强制冷却 N 秒
-├── 连亏冷却器 (LosingStreakGuard)
-│   └── 连续止损 N 次后触发冷却
-├── 结构冷却器 (StructuralCooldown)
-│   ├── 快速止损触发（入场后 N 根 K 线内被止损）
-│   ├── 无动量触发（未达 +M ATR 就反向）
-│   ├── 连续失败触发（同方向连续 N 次 Probe 失败）
-│   └── 二次确认机制（冷却解除后首次入场需更高质量）
-├── 账户风险 (AccountRisk)
-│   └── 日内最大亏损限制
-├── 仓位风险 (PositionRisk)
-│   └── 持仓数量/方向检查
-└── 仓位计算 (PositionSizer)
-    └── 基于风险比例计算手数
+Regime: STANDBY [T+V-A] Q=0.42
 ```
+- 状态：ACTIVE / STANDBY / TRANSITION
+- Sub-Type：T+V-B / T+V-A / R+N 等
+- Q_score：市场质量分数
 
-### 策略层设计
+## 扩展指南
 
-**策略接口**：
-```cpp
-class IStrategy {
+### 新增策略（使用 StrategyRegistry）
+
+```mql5
+// 1. 创建策略类（继承 IStrategy）
+class Strategy_New : public IStrategy {
 public:
-    virtual void GenerateSignal(Signal &sig) = 0;
-    virtual void OnNewBar() {}
+    virtual bool Init() override { ... }
+    virtual bool UpdateIndicators() override { ... }
+    virtual bool TimeFilterOK() override { ... }
+    virtual Signal GenerateSignal(Signal &out) override { ... }
 };
+
+// 2. 在 Ea_run.mq5 中注册（OnInit）
+Strategy_New new_strategy;
+
+// 注册策略
+registry.Register("new_strategy", &new_strategy);
+
+// 如果是组合策略的子策略
+registry.Register("new_strategy_child", &new_strategy, true);
+combo.AddStrategy(&new_strategy, "NewStrategy");
+
+// 3. 选择策略变体
+registry.Select("new_strategy");  // 或在参数中选择
 ```
 
-**策略只负责**：
-1. 判断入场条件是否满足
-2. 填充 `Signal` 结构体（type, price, sl, tp, atr, structure_price）
-3. **不负责**冷却判断、仓位计算、风控检查
+**无需修改 OnTick 中的指标更新逻辑**，`registry.UpdateIndicators()` 会自动处理。
 
-**当前策略族**：
-| 策略 | 类型 | 说明 |
-|------|------|------|
-| `Strategy_BollMR_Base` | 均值回归 | BB + ATR 基线 |
-| `Strategy_BollMR_RSI` | 均值回归 | + RSI 过滤 |
-| `Strategy_BollMR_Time` | 均值回归 | + 时间过滤 |
-| `Strategy_BollMR_RSI_Time` | 均值回归 | + RSI + 时间过滤 |
-| `Strategy_BollMR_enhanced` | 均值回归 | 时间 + 趋势 + 分层退出 |
-| `Strategy_TrendPullback` | 趋势跟踪 | M15 方向 + M5 回撤入场 |
+### 新增 Regime Sub-Type
 
-### Signal 结构体
+在 `RegimeFilter.mqh` 的 `ClassifySubType()` 中添加新分类规则：
 
-```cpp
-struct Signal {
-    SignalType type;        // BUY / SELL / EXIT / ADD_LONG / ADD_SHORT
-    double confidence;      // 置信度 (0.0 ~ 1.0)
-    string source;          // 策略来源
-    datetime time;          // 信号时间
-    double price;           // 触发价格
-    double sl, tp;          // 止损止盈
-    double exit_volume;     // 部分平仓手数
-    double atr;             // ATR（用于结构冷却器）
-    double structure_price; // 结构点价格（用于结构冷却器）
-};
+```mql5
+RegimeSubType ClassifySubType() {
+    // 添加新的判断条件
+    if (new_condition)
+        return SUBTYPE_NEW_TYPE;
+    // ...
+}
 ```
 
-### 扩展指南
+### 新增风控模块
 
-**新增策略**：
-1. 继承 `IStrategy` 接口
-2. 实现 `GenerateSignal(Signal &sig)`
-3. 在 `Ea_run.mq5` 中注册到 `StrategyManager` 或 `Strategy_Combo`
-
-**新增风控模块**：
 1. 在 `Core/Risk/` 下创建新模块
 2. 在 `RiskPipeline` 中集成
 3. 在 `BuildTrade()` 中添加检查逻辑
 
-**新增策略到组合**：
-1. 创建新策略类继承 `IStrategy`
-2. 在 `Ea_run.mq5` 中实例化策略
-3. 在 combo 初始化时调用 `combo.AddStrategy(&new_strategy, "名称")`
-4. 初始化新策略：`new_strategy.Init()`
-
-### 多策略组合架构
-
-**核心设计**：`Strategy_Combo` 采用策略列表模式，支持动态添加任意数量策略（最多 8 个）。
+## Regime Filter 参数
 
 ```
-Strategy_Combo
-├── m_strategies[]     // 策略数组
-├── AddStrategy()      // 添加策略
-└── GenerateSignal()   // 组合信号
+Regime Filter 设置:
+├── RF_Q_Score_Standby = 0.5    # STANDBY 阈值
+├── RF_Q_Score_Active = 0.6     # ACTIVE 阈值
+├── RF_Transition_Bars = 3      # 过渡期 K 线数
+├── RF_Hysteresis = 0.05        # 滞后阈值（防止频繁切换）
+└── RF_Enable_SubType = true    # 启用 Sub-Type 分类
 ```
 
-**组合模式**：
+## 策略族
+
+### M1: Mean Reversion Family
+
+| 策略 | 说明 |
+|------|------|
+| `Strategy_BollMR_Base` | BB + ATR 基线 |
+| `Strategy_BollMR_RSI` | + RSI 过滤 |
+| `Strategy_BollMR_Time` | + 时间过滤 |
+| `Strategy_BollMR_RSI_Time` | + RSI + 时间过滤 |
+| `Strategy_BollMR_enhanced` | 时间 + 趋势 + 分层退出 |
+
+### M2: Trend Pullback Family
+
+| 组件 | 说明 |
+|------|------|
+| M15 方向判断 | EMA50/EMA200 + VWAP |
+| M5 回撤入场 | 价值区 + 结构确认 |
+| 四层出场 | L1防御 → L2最小兑现 → L3趋势持有 → L4时间止盈 |
+| 结构冷却器 | 假突破保护 |
+| 加仓管理器 | 趋势验证后加仓 |
+
+### 组合策略 (Strategy_Combo)
+
 | 模式 | 说明 |
 |------|------|
-| `COMBO_FIRST_SIGNAL` | 先到先得：取第一个有效信号 |
-| `COMBO_SAME_DIRECTION` | 同向叠加：所有策略同向才交易 |
-| `COMBO_MAJORITY_VOTE` | 多数投票：多数同向才交易 |
-| `COMBO_PRIORITY_FIRST` | 优先级：按添加顺序优先 |
-| `COMBO_CONFLICT_SKIP` | 冲突跳过：有反向信号时跳过（默认） |
-| `COMBO_BEST_CONFIDENCE` | 最高置信度：选置信度最高的信号 |
-
-**使用示例**（Ea_run.mq5）：
-```cpp
-combo.AddStrategy(&boll_enhanced, "BollMR");      // M1: 亚欧盘
-combo.AddStrategy(&trend_pullback, "TrendPullback"); // M2: 欧美盘
-// combo.AddStrategy(&xauusd_alpha, "XauusdAlpha");   // M3 (未来)
-```
-
-**各策略独立过滤条件**：
-| 策略 | 时间过滤 | 说明 |
-|------|----------|------|
-| BollMR | 亚欧盘 | 均值回归适合震荡时段 |
-| TrendPullback | 欧美盘 | 趋势跟踪适合趋势时段 |
-| XauusdAlpha | 美盘 | 未来：结构策略 |
-
-## 执行顺序总览
-
-- M1（Mean Reversion）：先 base 基线验证 → 再小范围参数优化 → 再逐项叠加 enhanced 组件
-- M2（Trend Pullback）：先 M15 方向框架 → 再 M5 回撤入场 → 再小范围优化 → 再过滤/风控叠加
-- M3（Regime Filter）：先规则过滤验证 → 再 ML 打分/权重 → 最后接入策略组合与风控
-- M4（回测评估）：先指标口径统一 → 再批量评估/相关性 → 最后引入更复杂评估维度
-- XAUUSD Alpha：先结构识别 → 再仓位结构 → 最后参数优化
+| `COMBO_FIRST_SIGNAL` | 先到先得 |
+| `COMBO_SAME_DIRECTION` | 所有策略同向才交易 |
+| `COMBO_MAJORITY_VOTE` | 多数投票 |
+| `COMBO_PRIORITY_FIRST` | 按添加顺序优先 |
+| `COMBO_CONFLICT_SKIP` | 有反向信号时跳过（默认） |
+| `COMBO_BEST_CONFIDENCE` | 选择置信度最高的信号 |
 
 ## 快速开始
 
@@ -375,347 +269,67 @@ combo.AddStrategy(&trend_pullback, "TrendPullback"); // M2: 欧美盘
 
 1. MT5 数据目录 → `MQL5/Experts` 放入项目
 2. 编译 `Ea_run.mq5`
-3. 图表加载 EA，调整参数
+3. 图表加载 EA，调整参数：
+   - `BollMRVariant`: 选择策略变体
+   - Regime Filter 参数（可选）
 
-### Python
+### Python 回测
 
 ```bash
 cd Python
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-python backtest.py --help
+
+# Regime 验证
+python regime/validate_regime.py --data /path/to/XAUUSD_M5.csv
 ```
 
-## 策略族（M1）
+## 信号文件格式
 
-### 分层关系
-
-- 基础因子层：最小可运行基线（如 BB + ATR）
-- 组合优化层：在基线上叠加单一过滤器（便于对比增益）
-- 风控层：与策略解耦的统一风险控制
-
-### 版本映射
-
-- `base`：BB + ATR 基线
-- `rsi`：BB + ATR + RSI 过滤
-- `time`：BB + ATR + 时间过滤
-- `rsi_time`：BB + ATR + RSI + 时间过滤
-- `enhanced`：时间 + 趋势 + 分层退出（实验对照）
-
-## 时间过滤（北京时间 → 自动换算 MT5 服务器时间）
-
-**模式一：按盘面时段选择**
-- `BollMR_TimeMode = "session"`
-- `BollMR_Session = "asia" | "europe" | "us" | "overlap" | "europe+us"`
-  - `asia`：08:00–16:00
-  - `europe`：15:00–24:00
-  - `us`：20:00–次日04:00
-  - `overlap`：20:00–24:00
-  - `europe+us`：欧盘或美盘任一满足
-
-**模式二：自定义时间段（北京时间）**
-- `BollMR_TimeMode = "custom"`
-- `BollMR_StartHour / BollMR_EndHour`
-
-**服务器时区与夏令时**
-- `BollMR_ServerUTCOffset = 2`
-- `BollMR_UseDST = true/false`
-- `BollMR_DSTShiftHours = 1`
-
-## 参数扫面（Python）
-
-```bash
-python Python/utils/param_sweep.py ^
-  --config Python/config.json ^
-  --source mt5 ^
-  --data XAUUSD_M5.csv ^
-  --symbol XAUUSD ^
-  --timeframe M5 ^
-  --grid "boll_period=18,20,22;boll_dev=1.8,2.0;ma_period=40,50" ^
-  --top 20 ^
-  --sort ret_over_dd ^
-  --out data/param_sweep.csv
+`signals_mt5.csv` 输出：
+```
+time,signal,event,source,regime
+2025.01.30 15:00:00,1,1,BollMR,ACTIVE||Q0.72
+2025.01.30 15:05:00,0,,,STANDBY|T+V-A|Q0.42
 ```
 
-筛选建议：
-- `--min-trades 80 --max-dd 0.25 --min-profit-factor 1.05`
+regime 列格式：`状态|Sub-Type|Q_score`
 
-输出字段包含：`total_return`、`max_drawdown`、`sharpe`、`win_rate`、`ending_balance`。
+## 参数优化关键发现
 
-## 数据输入
+基于 XAUUSD M5 数据参数扫描：
 
-- 回测输入为历史 K 线 CSV（OHLC）
-- MT5 导出路径由 `Python/config.json` 的 `paths.mt5_root` 控制
+| 参数 | 优化值 | 说明 |
+|------|--------|------|
+| boll_dev | 2.5 | 更宽布林带过滤假信号 |
+| atr_vol_limit | 1.2 | 更严格波动率过滤 |
+| boll_period | 15-20 | 最佳范围 |
+| atr_period | 10 | 较短周期反应更快 |
 
-## XAUUSD Alpha 体系（摘要）
-
-- 不是均值回归，核心是"结构失衡"
-- 顺序：结构识别 → 仓位结构 → 参数优化
-- 详细规范见 `TODO.md`
-
-## 策略族（M2）- Trend Pullback
-
-### 核心理念
-
-**大趋势 + 小级别回撤吃第二段**
-
-- M15 确定方向（EMA50/EMA200）
-- M5 寻找回撤入场点
-- 吃趋势的第二段利润
-
-### 适合品种与时段
-
-| 推荐程度 | 时段 | 说明 |
-|----------|------|------|
-| ⭐⭐⭐ 最适合 | 美盘 (us) | 趋势明确，回撤结构清晰 |
-| ⭐⭐ 次优 | 欧/美重叠 (overlap) | 流动性最好 |
-| ⭐ 可用 | 欧盘后半段 | 需观察 |
-| ❌ 不推荐 | 亚盘 | 假突破多，趋势不明确 |
-
-### 入场逻辑
-
-#### 1. 方向判断（M15）
-```
-多头趋势：EMA50 > EMA200 + 价格在 VWAP 上方
-空头趋势：EMA50 < EMA200 + 价格在 VWAP 下方
-```
-
-#### 2. 回撤确认（M5）
-
-**价值区判断**：
-- 价格回撤到 EMA20 或 VWAP 附近
-- 容差：±0.3 ATR
-
-**回撤深度限制**：
-- 最大回撤 < 0.618 ATR
-- 防止回撤太深变成反转
-
-#### 3. 止跌/止涨信号（K线形态）
-
-**多头止跌**（满足其一）：
-- 阳线反包：当前阳线完全包含前一根K线
-- 小实体 + 锤子线：实体 < 平均实体一半 + 下影线 > 实体1.5倍
-
-**空头止涨**（满足其一）：
-- 阴线反包：当前阴线完全包含前一根K线
-- 小实体 + 流星线：实体 < 平均实体一半 + 上影线 > 实体1.5倍
-
-#### 4. 结构突破确认
-
-**关键改进**：
-- 多头：用 **Ask** 判断突破（真实买入价）
-- 空头：用 **Bid** 判断跌破（真实卖出价）
-
-**突破目标**：
-- 多头突破回撤 Lower High（非简单 High[1]）
-- 空头跌破回撤 Higher Low（非简单 Low[1]）
-
-### 出场逻辑（四层结构）
-
-```
-核心原则：先活下来 → 再吃趋势 → 再放飞
-```
-
-| 层级 | 名称 | 触发条件 | 动作 |
-|------|------|----------|------|
-| L1 | 防御止损 | 结构破坏 / 初始SL触及 | 全平 |
-| L2 | 最小兑现 | 盈利 ≥ +1.5 ATR | 平仓30-40% |
-| L3 | 趋势持有 | EMA20+VWAP 双双跌破 / 趋势反转 | 全平 |
-| L4 | 时间止盈 | 交易时段结束 | 全平 |
-
-**Trailing Stop**（可选）：
-- 启用后，止损跟随价格移动
-- 距离：2.5 ATR
-
-### 风控参数
-
-```
-TrendPullback.Risk:
-- TP_ATR_Period    = 14    // ATR 周期
-- TP_ATR_SL_Multi  = 1.0   // 初始止损倍数
-
-TrendPullback.Exit:
-- TP_PartialExit1_ATR   = 1.5   // L2 触发阈值
-- TP_PartialExit1_Ratio = 0.35  // L2 平仓比例
-- TP_TrailATR_Multi     = 2.5   // Trailing 距离
-- TP_EnableTrailing     = true  // 启用 Trailing
-```
-
-### 时间过滤
-
-```
-TrendPullback.TimeFilter:
-- TP_Session            = "us,overlap"  // 默认美盘+重叠
-- TP_TimeFilterEntry    = true          // 入场时间过滤
-- TP_TimeExitEndSession = true          // 时段结束平仓
-```
-
-复用 BollMR 的时间参数：
-- `BollMR_ServerUTCOffset` - 服务器 UTC 偏移
-- `BollMR_UseDST` - 夏令时开关
-- `BollMR_DSTShiftHours` - 夏令时平移小时数
-
-### 参数分组
-
-| 分组 | 用途 |
-|------|------|
-| TrendPullback.HTF | M15 方向判断参数 |
-| TrendPullback.LTF | M5 回撤入场参数 |
-| TrendPullback.Structure | 结构确认参数 |
-| TrendPullback.Risk | 初始止损参数 |
-| TrendPullback.Exit | 四层出场参数 |
-| TrendPullback.Timeframe | 周期设置 |
-| TrendPullback.TimeFilter | 时间过滤参数 |
-| TrendPullback.Cooldown | 结构冷却器参数 |
-| TrendPullback.AddPosition | 加仓管理参数 |
-
-### 结构冷却器（StructuralCooldown）
-
-**唯一使命**：阻止"同一结构+同一段行情"被连续假突破反复收割。
-
-```
-核心理念：市场骗过你一次，在给出更高质量证据前不再相信
-```
-
-#### 触发条件
-
-| 条件 | 描述 | 说明 |
-|------|------|------|
-| 快速止损 | 入场后3根K线内被止损 | 100%假突破 |
-| 无动量 | 未达+0.5 ATR就反向 | 缺乏真实需求 |
-| 连续失败 | 同方向连续2次Probe失败 | 结构质量极差 |
-
-#### 冷却期间
-
-**禁止**：新的 Probe、Main、同方向任何入场
-**允许**：结构更新、记录新高/新低、计算新的 Pullback
-
-#### 解除条件
-
-```
-解除 = 时间条件 + 结构条件（二选一）
-```
-
-- **时间条件**：5根K线走完
-- **结构条件A**：形成新Pullback结构（回撤更浅 或 突破点更优）
-- **结构条件B**：价格拉开 ≥ 1 ATR（脱离假突破区域）
-
-#### 二次确认
-
-冷却解除后，只允许"更高质量"的入场：
-
-| 方案 | 条件 |
-|------|------|
-| 方案1（结构） | 突破点 > 上一次假突破点 |
-| 方案2（动量） | 突破后1-2根K线推进 ≥ 0.5 ATR |
-| 方案3（撤回） | 回撤深度 < 上一次回撤深度 |
-
-```
-TrendPullback.Cooldown:
-- TP_EnableCooldown        = true    // 启用冷却器
-- TP_CooldownBars          = 5       // 冷却K线数
-- TP_FastFailBars          = 3       // 快速失败判定
-- TP_MinMomentumATR        = 0.5     // 最小动量要求
-- TP_StructureUpgradeATR   = 1.0     // 结构升级距离
-```
-
-### 加仓管理器（AddPositionManager）
-
-**核心原则**：不是"价格涨了我加"，而是"市场第二次证明我是对的，我才敢更重"
-
-#### 三条铁律
-
-1. 不在浮亏时加仓
-2. 不在第一次突破后立即加仓
-3. 冷却器激活时禁止加仓
-
-#### 加仓条件（必须全部满足）
-
-| 条件 | 要求 |
-|------|------|
-| 主仓验证 | 已达TP1（≥+1.5 ATR）+ 已部分止盈 + SL≥BE |
-| 趋势加速 | 第二次回撤失败（趋势从"成立"到"加速"） |
-| 冷却器 | 未激活 |
-| 风险上限 | 总风险 ≤ 2.5R |
-
-#### 加仓结构
-
-| 加仓 | 触发条件 | 比例 |
-|------|----------|------|
-| 加仓#1 | 第二次回撤失败 | 主仓的40% |
-| 加仓#2 | 连续推进 ≥ 2 ATR | 主仓的25% |
-| 加仓#3 | ❌ 禁止 | — |
-
-#### 独立止损
-
-```
-加仓单止损 = 最近回撤结构点
-❌ 不与主仓共用一个SL
-→ 永远不会因一次加仓把整个趋势单炸掉
-```
-
-```
-TrendPullback.AddPosition:
-- TP_EnableAddPosition = true   // 启用加仓
-- TP_Add1_Ratio        = 0.4    // 第一次加仓比例
-- TP_Add2_Ratio        = 0.25   // 第二次加仓比例
-- TP_Add2_ProfitATR    = 2.0    // 第二次加仓盈利要求
-- TP_MaxTotalRisk      = 2.5    // 最大总风险(R倍数)
-```
-
-### 实盘注意事项
-
-1. **Ask/Bid 使用**：多头用 Ask 入场，空头用 Bid 入场，避免点差陷阱
-2. **回撤深度**：必须限制，否则变成"抄底逃顶"
-3. **时段选择**：美盘最佳，亚盘假信号多
-4. **K线形态**：小实体必须配合方向性信号，单独不成立
-
-## 参数优化关键发现（BollMR base 模式）
-
-基于 2025.09.01 - 2026.01.30 的 XAUUSD M5 数据参数扫描结果：
-
-| 参数 | 优化建议 | 说明 |
-|------|----------|------|
-| boll_dev | **2.5**（原 2.0） | 更宽的布林带能过滤更多假信号 |
-| atr_vol_limit | **1.2**（原 1.5） | 更严格的波动率过滤效果更好 |
-| boll_period | **15-20** | 最佳范围 |
-| atr_period | **10**（原 14） | 较短周期反应更快 |
-
-**最佳组合**：`boll_period=15, boll_dev=2.5, atr_period=10, atr_vol_limit=1.2`
-- 总收益：+5412（5个月）
-- 胜率：61.8%
-- 盈亏比：1.38
-- 交易数：421笔
-
-> 注意：以上优化基于 base 模式（无时间/RSI/MA过滤），enhanced 模式参数需单独验证。
-
-## 说明
-
-- `features.csv` / `signals_mt5.csv` 用于 MT5 与 Python 对齐
-- 回测逻辑与 MQL5 对齐中，近期完成了 Bollinger 缓冲修正
-
-## 细节（Web UI）
-
-启动本地 Web 面板：
+## Web UI
 
 ```bash
 scripts\start_web_ui.cmd
+# 浏览器打开 http://127.0.0.1:8787
 ```
 
-浏览器打开：
+功能：
+- 修改配置参数
+- 上传 CSV 运行回测
+- 查看回测结果
+- 导出策略参数
 
-```
-http://127.0.0.1:8787
-```
+## 版本历史
 
-可用功能：
+### v2.2.0-development
+- 新增 Regime Filter（Python + MQL5）
+- 新增 StrategyRegistry 统一策略管理
+- 重构 Ea_run.mq5（减少约100行硬编码）
+- StatusPanel 新增 Regime 状态显示
+- 信号文件新增 regime 列
 
-- 修改 `config.json`（路径/成本/策略参数）
-- 上传 CSV 并一键运行
-- 下载 MT5 导出的 `features.csv` / `signals_mt5.csv`
-- 查看回测结果图表
-- 查看 `mt5_root` 下的 CSV 列表并一键选用
-- 导出当前策略参数为 `.set`
-- 一键执行回测与数据导出
-
+### v2.1.x
+- M1/M2 策略族完整实现
+- 风控管道完善
+- 结构冷却器 + 加仓管理器

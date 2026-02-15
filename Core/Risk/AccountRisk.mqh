@@ -8,6 +8,7 @@
 #define __RISK_ACCOUNT_RISK_MQH__
 
 // 输入参数定义在 Inputs_All.mqh，此文件不再重复声明
+#include "../Inputs_All.mqh"
 
 class AccountRisk
 {

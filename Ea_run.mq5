@@ -26,6 +26,7 @@
 // 策略 & 管理
 #include "Core/Strategy.mqh"
 #include "Core/StrategyManager.mqh"
+#include "Core/StrategyRegistry.mqh"
 #include "Strategies/Strategy_BollMR_enhanced.mqh"
 #include "Strategies/Strategy_BollMR_Base.mqh"
 #include "Strategies/Strategy_BollMR_RSI.mqh"
@@ -44,6 +45,9 @@
 #include "Core/ConfidenceFilter.mqh"
 #include "Core/AIDecisionGateway.mqh"
 
+// Regime Filter
+#include "Core/Regime/RegimeFilter.mqh"
+
 //  UI 状态面板
 #include "Core/UI/StatusPanel.mqh"
 
@@ -52,6 +56,8 @@
 
 //---------------- 全局对象 ----------------
 StrategyManager     manager; // 策略管理器
+StrategyRegistry    registry; // 策略注册表
+
 Strategy_BollMR     boll_enhanced; // Bollinger 均值回归策略（增强版）
 Strategy_BollMR_Base boll_base;    // Bollinger 均值回归策略（基线版）
 Strategy_BollMR_RSI  boll_rsi;     // Bollinger 均值回归策略（RSI 过滤）
@@ -66,6 +72,9 @@ PositionCoordinator pos_coord; // 单品种单向一仓
 
 AIDecisionGateway   ai_gateway; // AI 决策网关
 ConfidenceFilter    conf_filter; // 置信度过滤器
+
+// Regime Filter
+CRegimeFilter       regime_filter; // Regime 过滤器
 
 StatusPanel status_panel; // 状态面板
 
@@ -103,16 +112,9 @@ void UpdateStatusPanel()
    string reason = "";
    if(ea_disabled)
       reason = "TF " + EnumToString((ENUM_TIMEFRAMES)_Period) + " != " + EnumToString(TargetTimeframe);
-   bool time_allowed = true;
-   if(g_boll_variant == "enhanced")
-      time_allowed = boll_enhanced.TimeFilterOK();
-   else if(g_boll_variant == "time")
-      time_allowed = boll_time.TimeFilterOK();
-   else if(g_boll_variant == "trend_pullback")
-      time_allowed = trend_pullback.TimeFilterOK();
-   else if(g_boll_variant == "combo")
-      // combo 模式：任一策略时间过滤通过即可
-      time_allowed = boll_enhanced.TimeFilterOK() || trend_pullback.TimeFilterOK();
+   
+   // 统一通过注册表获取时间过滤状态
+   bool time_allowed = registry.TimeFilterOK();
    string time_reason = "";
    if(!time_allowed)
       time_reason = "交易时间限制";
@@ -122,8 +124,14 @@ void UpdateStatusPanel()
    string sc_reason = risk_pipeline.GetStructuralCooldownReason();
    int sc_remaining = risk_pipeline.GetStructuralCooldownRemaining();
 
+   // 获取 Regime 状态
+   RegimeState regime_state = regime_filter.GetState();
+   string regime_state_str = RegimeStateToString(regime_state);
+   string subtype_str = RegimeSubTypeToString(regime_filter.GetSubType());
+   double q_score = regime_filter.GetQScore();
+
    status_panel.Update(risk_pipeline, pos_coord, ea_disabled, reason, time_allowed, time_reason,
-                       sc_active, sc_reason, sc_remaining);
+                       sc_active, sc_reason, sc_remaining, regime_state_str, subtype_str, q_score);
 }
 
 //---------------- 初始化 ----------------
@@ -172,109 +180,62 @@ int OnInit()
    status_panel.Init(); // 初始化状态面板
    EventSetTimer(1); // 每秒刷新面板时间显示
 
-   // 1. 策略管理器：挂上策略
+   // 1. 注册所有策略到注册表
+   registry.Register("enhanced", &boll_enhanced);
+   registry.Register("base", &boll_base);
+   registry.Register("rsi", &boll_rsi);
+   registry.Register("time", &boll_time);
+   registry.Register("rsi_time", &boll_rsi_time);
+   registry.Register("trend_pullback", &trend_pullback);
+   
+   // 注册组合策略的子策略（标记为 combo_child）
+   registry.Register("boll_rsi_time_child", &boll_enhanced, true);
+   registry.Register("trend_pullback_child", &trend_pullback, true);
+   
+   // 2. 选择策略变体
    g_boll_variant = BollMRVariant;
    StringToLower(g_boll_variant);
-   if(g_boll_variant == "base")
-      manager.Add(&boll_base);
-   else if(g_boll_variant == "rsi")
-      manager.Add(&boll_rsi);
-   else if(g_boll_variant == "time")
-      manager.Add(&boll_time);
-   else if(g_boll_variant == "rsi_time")
-      manager.Add(&boll_rsi_time);
-   else if(g_boll_variant == "trend_pullback")
-      manager.Add(&trend_pullback);
-   else if(g_boll_variant == "combo")
-      manager.Add(&combo);
-   else
-      manager.Add(&boll_enhanced);
+   
+   // 组合策略特殊处理
+   if(g_boll_variant == "combo")
+   {
+      combo.AddStrategy(&boll_rsi_time, "BollMR_rsi_time");
+      combo.AddStrategy(&trend_pullback, "TrendPullback");
+      registry.RegisterCombo(&combo, "combo");
+   }
+   
+   // 选择策略
+   if(!registry.Select(g_boll_variant))
+   {
+      // 未找到则使用默认
+      registry.Select("enhanced");
+      g_boll_variant = "enhanced";
+   }
+   
+   // 3. 初始化策略
+   if(!registry.Init())
+   {
+      Print("Failed to initialize strategy: ", g_boll_variant);
+      return INIT_FAILED;
+   }
+   
+   // 4. 添加到策略管理器
+   manager.Add(registry.GetPrimary());
 
-   // 2. 初始化策略
-    if(g_boll_variant == "base")
-    {
-        if(!boll_base.Init())
-        {
-            Print("Failed to initialize BollMR base strategy");
-            return INIT_FAILED;
-        }
-    }
-    else if(g_boll_variant == "rsi")
-    {
-        if(!boll_rsi.Init())
-        {
-            Print("Failed to initialize BollMR RSI strategy");
-            return INIT_FAILED;
-        }
-    }
-    else if(g_boll_variant == "time")
-    {
-        if(!boll_time.Init())
-        {
-            Print("Failed to initialize BollMR time strategy");
-            return INIT_FAILED;
-        }
-    }
-    else if(g_boll_variant == "rsi_time")
-    {
-        if(!boll_rsi_time.Init())
-        {
-            Print("Failed to initialize BollMR RSI+Time strategy");
-            return INIT_FAILED;
-        }
-    }
-    else if(g_boll_variant == "trend_pullback")
-    {
-        if(!trend_pullback.Init())
-        {
-            Print("Failed to initialize TrendPullback strategy");
-            return INIT_FAILED;
-        }
-    }
-    else if(g_boll_variant == "combo")
-    {
-        // 组合策略：添加子策略
-        // M1: BollMR Enhanced（亚欧盘）
-        combo.AddStrategy(&boll_enhanced, "BollMR");
-        // M2: TrendPullback（欧美盘）
-        combo.AddStrategy(&trend_pullback, "TrendPullback");
-        // M3: 未来可继续添加...
-        // combo.AddStrategy(&xauusd_alpha, "XauusdAlpha");
-        
-        // 初始化各子策略
-        if(!boll_enhanced.Init())
-        {
-            Print("Failed to initialize BollMR for combo");
-            return INIT_FAILED;
-        }
-        if(!trend_pullback.Init())
-        {
-            Print("Failed to initialize TrendPullback for combo");
-            return INIT_FAILED;
-        }
-        
-        // 初始化组合策略
-        if(!combo.Init())
-        {
-            Print("Failed to initialize Combo strategy");
-            return INIT_FAILED;
-        }
-    }
-    else
-    {
-        if(!boll_enhanced.Init())
-        {
-            Print("Failed to initialize BollMR enhanced strategy");
-            return INIT_FAILED;
-        }
-    }
-   // 3. 风控管道初始化
+   // 5. 风控管道初始化
    risk_pipeline.Init();
 
-   // 4. AI 决策网关：挂上一个简单的置信度过滤器
+   // 6. AI 决策网关：挂上一个简单的置信度过滤器
    ai_gateway.AddFilter(&conf_filter);
 
-   // 5. 仓位协调器与真实终端同步（防止 EA 重启时状态不一致）
+   // 5. Regime Filter 初始化
+   if(!regime_filter.Init(_Symbol, _Period))
+   {
+      Print("Failed to initialize RegimeFilter");
+      return INIT_FAILED;
+   }
+
+   // 6. 仓位协调器与真实终端同步（防止 EA 重启时状态不一致）
    pos_coord.SyncFromTerminal();
 
    // 面板首次显示
@@ -298,7 +259,7 @@ int OnInit()
                             FILE_WRITE | FILE_CSV | FILE_COMMON | FILE_SHARE_WRITE);
    if(g_signal_file != INVALID_HANDLE)
    {
-      FileWrite(g_signal_file, "time","signal","event","source");
+      FileWrite(g_signal_file, "time","signal","event","source","regime");
       Print("Signals file opened.");
    }
    else
@@ -348,51 +309,33 @@ void OnTick()
       return;
    }
 
-   // 指标数据更新
-   if(g_boll_variant == "base")
-   {
-      if(!boll_base.UpdateIndicators())
-         return;
-   }
-   else if(g_boll_variant == "rsi")
-   {
-      if(!boll_rsi.UpdateIndicators())
-         return;
-   }
-   else if(g_boll_variant == "time")
-   {
-      if(!boll_time.UpdateIndicators())
-         return;
-   }
-   else if(g_boll_variant == "rsi_time")
-   {
-      if(!boll_rsi_time.UpdateIndicators())
-         return;
-   }
-   else if(g_boll_variant == "trend_pullback")
-   {
-      if(!trend_pullback.UpdateIndicators())
-         return;
-   }
-   else if(g_boll_variant == "combo")
-   {
-      // 更新组合策略中各子策略的指标
-      if(!boll_enhanced.UpdateIndicators())
-         return;
-      if(!trend_pullback.UpdateIndicators())
-         return;
-   }
-   else
-   {
-      if(!boll_enhanced.UpdateIndicators())
-         return;
-   }
-
-   // 指标调试输出（可选）
-   // Print("BollLower0=", GetBollLower(0), " BollLower1=", GetBollLower(1),
-   //       " ATR1=", GetATR(1));
+   // 指标数据更新（统一通过注册表）
+   if(!registry.UpdateIndicators())
+      return;
 
    pos_coord.SyncFromTerminal(); // 同步仓位状态
+
+   // 更新 Regime Filter
+   double close = iClose(_Symbol, _Period, 1);
+   double high = iHigh(_Symbol, _Period, 1);
+   double low = iLow(_Symbol, _Period, 1);
+   if(!regime_filter.Update(close, high, low))
+   {
+      Print("[EA] RegimeFilter update failed");
+   }
+   
+   // 检查 Regime 状态
+   RegimeState regime_state = regime_filter.GetState();
+   bool regime_active = (regime_state == STATE_ACTIVE);
+   
+   // Regime 状态调试输出
+   static int last_regime_log_bar = -1;
+   int current_bar = iBars(_Symbol, _Period);
+   if(current_bar != last_regime_log_bar && regime_state != STATE_ACTIVE)
+   {
+      last_regime_log_bar = current_bar;
+      regime_filter.PrintState();
+   }
 
    // 更新结构冷却器状态（检查是否可以解除冷却）
    if(risk_pipeline.IsStructuralCooldownActive())
@@ -401,8 +344,9 @@ void OnTick()
       double atr = 0;
       double structurePrice = 0;
       
-      // combo 模式下，trend_pullback 是组合的一部分
-      if(g_boll_variant == "trend_pullback" || g_boll_variant == "combo")
+      // trend_pullback 或 combo 模式需要获取结构价格
+      string variant = registry.GetVariant();
+      if(variant == "trend_pullback" || variant == "combo")
       {
          atr = trend_pullback.GetCurrentATR();
          structurePrice = trend_pullback.GetCurrentStructurePrice();
@@ -414,6 +358,24 @@ void OnTick()
 
    Signal signal; // 声明信号变量
    signal = manager.GetSignal(); // 获取策略信号
+   
+   // Regime Filter 过滤（STANDBY 时禁止新开仓）
+   if(signal.type == SIGNAL_BUY || signal.type == SIGNAL_SELL)
+   {
+      if(!regime_active)
+      {
+         // 每分钟最多打印一次 Regime 过滤日志
+         static datetime last_regime_reject_log = 0;
+         datetime current_time = TimeCurrent();
+         if(current_time - last_regime_reject_log >= 60)
+         {
+            last_regime_reject_log = current_time;
+            Print("[EA] RegimeFilter: STANDBY state, rejecting signal from ", signal.source);
+            regime_filter.PrintState();
+         }
+         signal.type = SIGNAL_NONE;
+      }
+   }
 
    int signal_event = 0;
    bool has_event = false;
@@ -442,11 +404,15 @@ void OnTick()
 
    if(g_signal_file != INVALID_HANDLE)
    {
+      // 使用辅助函数获取 Regime 状态字符串
+      string regime_state_str = RegimeStateToString(regime_state);
+      string subtype_str = RegimeSubTypeToString(regime_filter.GetSubType());
       FileWrite(g_signal_file,
                 TimeToString(iTime(_Symbol, _Period, 0), TIME_DATE|TIME_SECONDS),
                 g_signal_state,
                 (has_event ? IntegerToString(signal_event) : ""),
-                signal.source);
+                signal.source,
+                StringFormat("%s|%s|Q%.2f", regime_state_str, subtype_str, regime_filter.GetQScore()));
    }
 
    if(pos_coord.HasPosition()) // 如果当前有仓位，先检查是否需要平仓
@@ -572,7 +538,7 @@ void OnTick()
       }
    }
 
-   // 5. 特征导出（如果你还想保留）
+   // 5. 特征导出
    if(g_file != INVALID_HANDLE)
    {
       double close  = iClose(_Symbol, _Period, 1);    // 上一根收盘价

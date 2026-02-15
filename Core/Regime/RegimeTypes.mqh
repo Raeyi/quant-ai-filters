@@ -173,4 +173,44 @@ struct RiskAdjustment
     }
 };
 
+//+------------------------------------------------------------------+
+//| 辅助函数：枚举转字符串                                              |
+//+------------------------------------------------------------------+
+string RegimeStateToString(RegimeState state)
+{
+    switch(state)
+    {
+        case STATE_ACTIVE:    return "ACTIVE";
+        case STATE_STANDBY:   return "STANDBY";
+        case STATE_TRANSITION: return "TRANSITION";
+    }
+    return "UNKNOWN";
+}
+
+string RegimeSubTypeToString(RegimeSubType subtype)
+{
+    switch(subtype)
+    {
+        case SUBTYPE_TVB_TREND:   return "T+V-B";
+        case SUBTYPE_TVA_EMOTION: return "T+V-A";
+        case SUBTYPE_TN_MILD:     return "T+N";
+        case SUBTYPE_RN_NORMAL:   return "R+N";
+        case SUBTYPE_RVB_FALSE:   return "R+V-B";
+        case SUBTYPE_RVA_NEWS:    return "R+V-A";
+        case SUBTYPE_RL_LOW:      return "R+L";
+    }
+    return "";
+}
+
+string VolatilityStateToString(VolatilityState vol)
+{
+    switch(vol)
+    {
+        case VOL_HIGH:   return "HIGH";
+        case VOL_NORMAL: return "NORMAL";
+        case VOL_LOW:    return "LOW";
+    }
+    return "UNKNOWN";
+}
+
 #endif // __REGIME_TYPES_MQH__

@@ -415,13 +415,13 @@ public:
             default: subtype_str = "UNKNOWN"; break;
         }
         
-        ::Print(StringFormat(
-            "[RegimeFilter] State=%s SubType=%s Q=%.2f Trend=%.2f Vol=%s SL=%.1f TP=%.1f Scale=%.1f",
-            state_str, subtype_str, m_snapshot.q_score, m_snapshot.trend_strength,
-            (m_snapshot.volatility_state == VOL_HIGH ? "HIGH" : 
-             m_snapshot.volatility_state == VOL_LOW ? "LOW" : "NORMAL"),
-            m_snapshot.sl_multiplier, m_snapshot.tp_multiplier, m_snapshot.scale_multiplier
-        ));
+        // ::Print(StringFormat(
+        //     "[RegimeFilter] State=%s SubType=%s Q=%.2f Trend=%.2f Vol=%s SL=%.1f TP=%.1f Scale=%.1f",
+        //     state_str, subtype_str, m_snapshot.q_score, m_snapshot.trend_strength,
+        //     (m_snapshot.volatility_state == VOL_HIGH ? "HIGH" : 
+        //      m_snapshot.volatility_state == VOL_LOW ? "LOW" : "NORMAL"),
+        //     m_snapshot.sl_multiplier, m_snapshot.tp_multiplier, m_snapshot.scale_multiplier
+        // ));
     }
 };
 
