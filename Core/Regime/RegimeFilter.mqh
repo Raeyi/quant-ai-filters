@@ -13,8 +13,8 @@
 //| Regime Filter 参数                                                 |
 //+------------------------------------------------------------------+
 input group "========== Regime Filter 设置 =========="
-input double  RF_Q_Score_Standby = 0.35;    // Q_score STANDBY 阈值
-input double  RF_Q_Score_Active = 0.45;     // Q_score ACTIVE 阈值
+input double  RF_Q_Score_Standby = 0.30;    // Q_score STANDBY 阈值
+input double  RF_Q_Score_Active = 0.40;     // Q_score ACTIVE 阈值
 input int     RF_Transition_Bars = 3;       // 过渡期 K 线数
 input double  RF_Hysteresis = 0.05;         // 滞后阈值
 input bool    RF_Enable_SubType = true;     // 启用 Sub-Type 分类
@@ -99,8 +99,11 @@ public:
         if(!m_indicators.Update())
             return false;
         
-        // 更新质量
-        if(!m_quality.Update(close, high, low))
+        // 获取 ADX 值
+        double adx = m_indicators.GetADX();
+        
+        // 更新质量（传入 ADX）
+        if(!m_quality.Update(close, high, low, adx))
             return false;
         
         // 计算 Q_score

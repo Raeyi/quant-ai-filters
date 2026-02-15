@@ -16,8 +16,12 @@ input int     MQ_Breakout_Lookback = 5;        // 突破回看周期
 input double  MQ_Breakout_Threshold = 0.3;     // 假突破阈值
 input int     MQ_False_Breakout_Window = 30;   // 假突破率窗口
 input double  MQ_Q_Score_Threshold = 0.5;      // Q_score 阈值
-input double  MQ_Efficiency_Baseline = 0.15;   // 效率基准值（震荡市正常水平）
-input double  MQ_FBR_Baseline = 0.50;          // 假突破率基准值（震荡市正常水平）
+input double  MQ_Efficiency_Baseline = 0.10;   // 效率基准值（震荡市正常水平）
+input double  MQ_FBR_Baseline = 0.40;          // 假突破率基准值（震荡市正常水平）
+input double  MQ_ADX_Baseline = 25.0;          // ADX 基准值（趋势分界线）
+input double  MQ_Weight_Eff = 0.25;            // 效率权重
+input double  MQ_Weight_FBR = 0.25;            // 假突破率权重
+input double  MQ_Weight_ADX = 0.20;            // ADX 权重
 
 //+------------------------------------------------------------------+
 //| 市场质量类                                                        |
@@ -33,10 +37,15 @@ private:
     double  m_q_score_threshold;
     double  m_efficiency_baseline;
     double  m_fbr_baseline;
+    double  m_adx_baseline;
+    double  m_weight_eff;
+    double  m_weight_fbr;
+    double  m_weight_adx;
     
     // 计算结果
     double  m_efficiency;
     double  m_false_breakout_rate;
+    double  m_adx;
     double  m_q_score;
     bool    m_is_tradable;
     
@@ -58,8 +67,13 @@ public:
         m_q_score_threshold(0.5),
         m_efficiency_baseline(0.15),
         m_fbr_baseline(0.50),
+        m_adx_baseline(25.0),
+        m_weight_eff(0.25),
+        m_weight_fbr(0.25),
+        m_weight_adx(0.20),
         m_efficiency(0.5),
         m_false_breakout_rate(0.0),
+        m_adx(25.0),
         m_q_score(0.5),
         m_is_tradable(true),
         m_history_count(0)
@@ -84,6 +98,10 @@ public:
         m_q_score_threshold = MQ_Q_Score_Threshold;
         m_efficiency_baseline = MQ_Efficiency_Baseline;
         m_fbr_baseline = MQ_FBR_Baseline;
+        m_adx_baseline = MQ_ADX_Baseline;
+        m_weight_eff = MQ_Weight_Eff;
+        m_weight_fbr = MQ_Weight_FBR;
+        m_weight_adx = MQ_Weight_ADX;
     }
     
     //+--------------------------------------------------------------
@@ -183,7 +201,7 @@ public:
     //+--------------------------------------------------------------
     //| 更新计算
     //+--------------------------------------------------------------
-    bool Update(double close, double high, double low)
+    bool Update(double close, double high, double low, double adx = 25.0)
     {
         // 更新价格历史
         UpdatePrices(close, high, low);
@@ -194,14 +212,21 @@ public:
         // 计算假突破率
         m_false_breakout_rate = CalculateFalseBreakoutRate();
         
-        // 计算 Q_score（新公式：以基准值为中心）
-        // Q = 0.5 + 效率贡献 + 假突破惩罚
-        // 效率贡献：高于基准加分，低于基准减分
-        // 假突破惩罚：低于基准加分，高于基准减分
-        double eff_score = 0.25 * (m_efficiency / m_efficiency_baseline - 1.0);
-        double fbr_score = 0.25 * (m_fbr_baseline - m_false_breakout_rate) / m_fbr_baseline;
+        // 存储 ADX
+        m_adx = adx;
         
-        m_q_score = MathMax(0.1, MathMin(0.9, 0.5 + eff_score + fbr_score));
+        // 计算 Q_score（新公式：eff + fbr + adx 三维度）
+        // Q = 0.5 + 效率贡献 + 假突破惩罚 + ADX贡献
+        double eff_score = m_weight_eff * (m_efficiency / m_efficiency_baseline - 1.0);
+        double fbr_score = m_weight_fbr * (m_fbr_baseline - m_false_breakout_rate) / m_fbr_baseline;
+        
+        // ADX 贡献：高于基准（趋势市）加分，低于基准（震荡市）不加分不减分
+        // 归一化：ADX 25 → 0, ADX 40 → 0.6, ADX 50 → 1.0
+        double adx_normalized = MathMax(0.0, (m_adx - m_adx_baseline) / 25.0);
+        adx_normalized = MathMin(1.0, adx_normalized);
+        double adx_score = m_weight_adx * adx_normalized;
+        
+        m_q_score = MathMax(0.1, MathMin(0.9, 0.5 + eff_score + fbr_score + adx_score));
         
         // 判断是否可交易
         m_is_tradable = (m_q_score >= m_q_score_threshold);
@@ -210,8 +235,8 @@ public:
         static int debug_counter = 0;
         if(++debug_counter % 100 == 0)
         {
-            Print(StringFormat("[MarketQuality] eff=%.3f fbr=%.3f Q=%.3f (eff_s=%.2f fbr_s=%.2f)",
-                m_efficiency, m_false_breakout_rate, m_q_score, eff_score, fbr_score));
+            Print(StringFormat("[MarketQuality] eff=%.3f fbr=%.3f adx=%.1f Q=%.3f (eff_s=%.2f fbr_s=%.2f adx_s=%.2f)",
+                m_efficiency, m_false_breakout_rate, m_adx, m_q_score, eff_score, fbr_score, adx_score));
         }
         
         return true;
@@ -226,6 +251,11 @@ public:
     //| 获取假突破率
     //+--------------------------------------------------------------
     double GetFalseBreakoutRate() const { return m_false_breakout_rate; }
+    
+    //+--------------------------------------------------------------
+    //| 获取 ADX
+    //+--------------------------------------------------------------
+    double GetADX() const { return m_adx; }
     
     //+--------------------------------------------------------------
     //| 获取 Q_score

@@ -477,16 +477,16 @@ EA 实时推理
 
 ```
 Regime Filter 设置:
-├── RF_Q_Score_Standby = 0.35  # STANDBY 阈值
-├── RF_Q_Score_Active = 0.45   # ACTIVE 阈值
+├── RF_Q_Score_Standby = 0.30  # STANDBY 阈值
+├── RF_Q_Score_Active = 0.40   # ACTIVE 阈值
 ├── RF_Transition_Bars = 3     # 过渡期 K 线数
 ├── RF_Hysteresis = 0.05       # 滞后阈值
 └── RF_Enable_SubType = true   # 启用 Sub-Type
 
 市场质量设置:
 ├── MQ_Efficiency_Period = 20
-├── MQ_Efficiency_Baseline = 0.15
-├── MQ_FBR_Baseline = 0.50
+├── MQ_Efficiency_Baseline = 0.10
+├── MQ_FBR_Baseline = 0.40
 ```
 
 ---
