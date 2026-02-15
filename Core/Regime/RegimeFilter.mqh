@@ -13,8 +13,8 @@
 //| Regime Filter 参数                                                 |
 //+------------------------------------------------------------------+
 input group "========== Regime Filter 设置 =========="
-input double  RF_Q_Score_Standby = 0.5;     // Q_score STANDBY 阈值
-input double  RF_Q_Score_Active = 0.6;      // Q_score ACTIVE 阈值
+input double  RF_Q_Score_Standby = 0.35;    // Q_score STANDBY 阈值
+input double  RF_Q_Score_Active = 0.45;     // Q_score ACTIVE 阈值
 input int     RF_Transition_Bars = 3;       // 过渡期 K 线数
 input double  RF_Hysteresis = 0.05;         // 滞后阈值
 input bool    RF_Enable_SubType = true;     // 启用 Sub-Type 分类
