@@ -27,11 +27,11 @@ Phase 5: 策略扩展 ⏳
 
 ## M6: 参数优化 + 数据收集【进行中】
 
-- [ ] M6.1 Q-Score 阈值调优
-- [ ] M6.2 参数网格搜索
+- [x] M6.1 Q-Score 阈值调优（新公式 + 阈值调整）
+- [x] M6.2 参数网格搜索（regime_param_optimize.py）
 - [ ] M6.3 Walk-Forward 验证
-- [ ] M6.4 数据收集器实现
-- [ ] M6.5 数据 Schema 定义
+- [x] M6.4 数据收集器实现（data_collector.py）
+- [x] M6.5 数据 Schema 定义（ai_data_schema.md 更新）
 
 ## M7: ML 参数优化【待开始】
 
