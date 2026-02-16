@@ -27,7 +27,7 @@ Phase 6:
 - RegimeIntegratedBacktest: 整合 Regime 的回测验证
 """
 
-from regime.regime_indicators import RegimeIndicators, RegimeParams, RegimeType, VolatilityState
+from regime.regime_indicators import RegimeIndicators, RegimeParams, RegimeType, VolatilityState, TrendDirection
 from regime.market_quality import MarketQuality, MarketQualityParams
 from regime.regime_filter import RegimeFilter, RegimeFilterParams, RegimeState
 from regime.regime_subtype import (
@@ -66,6 +66,7 @@ __all__ = [
     "RegimeParams",
     "RegimeType",
     "VolatilityState",
+    "TrendDirection",
     "MarketQuality",
     "MarketQualityParams",
     "RegimeFilter",

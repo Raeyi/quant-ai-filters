@@ -30,6 +30,13 @@ class RegimeType(Enum):
     RANGE = "range"
 
 
+class TrendDirection(Enum):
+    """趋势方向（与 MQL5 统一）"""
+    NONE = 0   # 无趋势/震荡
+    BULL = 1   # 多头
+    BEAR = -1  # 空头
+
+
 @dataclass
 class RegimeParams:
     """Regime 指标参数"""
@@ -58,7 +65,7 @@ class RegimeData:
     volatility: float = 0.0
     volatility_state: VolatilityState = VolatilityState.NORMAL
     regime_type: RegimeType = RegimeType.RANGE
-    trend_direction: int = 0  # 1=多, -1=空, 0=无
+    trend_direction: TrendDirection = TrendDirection.NONE
 
 
 class RegimeIndicators:
@@ -218,43 +225,48 @@ class RegimeIndicators:
         return regime
     
     def _calculate_trend_direction(
-        self, 
+        self,
         df: pd.DataFrame,
         plus_di: pd.Series,
         minus_di: pd.Series
     ) -> pd.Series:
         """
         判断趋势方向
-        
+
         Returns:
-            1: 多头趋势
-            -1: 空头趋势
-            0: 无明确趋势
+            TrendDirection 枚举 Series
         """
-        direction = pd.Series(0, index=df.index)
-        
+        direction = pd.Series(TrendDirection.NONE, index=df.index)
+
         # 基于 DI 差值判断
         di_diff = plus_di - minus_di
-        
-        direction = np.where(di_diff > 5, 1, direction)
-        direction = np.where(di_diff < -5, -1, direction)
-        
-        return pd.Series(direction, index=df.index)
-    
+
+        direction = direction.where(di_diff <= 5, TrendDirection.BULL)
+        direction = direction.where(di_diff >= -5, TrendDirection.BEAR)
+
+        return direction
+
     def get_current_regime(self, df: pd.DataFrame) -> RegimeData:
         """获取当前最新的 Regime 数据"""
         result = self.calculate(df)
-        
+
         if len(result) == 0:
             return RegimeData()
-        
+
         last = result.iloc[-1]
-        
+
+        # 转换 trend_direction 为枚举
+        trend_dir = last["trend_direction"]
+        if isinstance(trend_dir, TrendDirection):
+            trend_direction = trend_dir
+        else:
+            trend_direction = TrendDirection(int(trend_dir))
+
         return RegimeData(
             adx=float(last["adx"]),
             trend_strength=float(last["trend_strength"]),
             volatility=float(last["volatility"]),
             volatility_state=last["volatility_state"],
             regime_type=last["regime_type"],
-            trend_direction=int(last["trend_direction"])
+            trend_direction=trend_direction
         )

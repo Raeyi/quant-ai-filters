@@ -23,7 +23,7 @@ from typing import Optional, Tuple, List
 import numpy as np
 import pandas as pd
 
-from regime.regime_indicators import RegimeIndicators, RegimeParams, RegimeType, VolatilityState
+from regime.regime_indicators import RegimeIndicators, RegimeParams, RegimeType, VolatilityState, TrendDirection
 from regime.market_quality import MarketQuality, MarketQualityParams
 from regime.regime_subtype import RegimeSubTypeClassifier, SubTypeParams, SubTypeData, RegimeSubType
 
@@ -74,7 +74,7 @@ class RegimeSnapshot:
     state: RegimeState = RegimeState.STANDBY
     regime_type: RegimeType = RegimeType.RANGE
     volatility_state: VolatilityState = VolatilityState.NORMAL
-    trend_direction: int = 0
+    trend_direction: TrendDirection = TrendDirection.NONE
     
     # Sub-Type (Phase 2)
     sub_type: RegimeSubType = RegimeSubType.UNKNOWN
@@ -298,20 +298,27 @@ class RegimeFilter:
     def get_snapshot(self, df: pd.DataFrame) -> RegimeSnapshot:
         """获取当前 Regime 快照"""
         result = self.calculate(df)
-        
+
         if len(result) == 0:
             return RegimeSnapshot()
-        
+
         last = result.iloc[-1]
-        
+
         # 获取推荐策略
         strategies = self._get_strategies_from_result(last)
-        
+
+        # 转换 trend_direction 为枚举
+        trend_dir = last["trend_direction"]
+        if isinstance(trend_dir, TrendDirection):
+            trend_direction = trend_dir
+        else:
+            trend_direction = TrendDirection(int(trend_dir))
+
         return RegimeSnapshot(
             state=last["regime_state"],
             regime_type=last["regime_type"],
             volatility_state=last["volatility_state"],
-            trend_direction=int(last["trend_direction"]),
+            trend_direction=trend_direction,
             sub_type=last.get("sub_type", RegimeSubType.UNKNOWN),
             recommended_action=last.get("recommended_action", "observe"),
             trend_strength=float(last["trend_strength"]),
@@ -338,19 +345,19 @@ class RegimeFilter:
     def _recommend_strategies(self, row: pd.Series) -> list:
         """
         基于当前 Regime 推荐策略
-        
+
         Phase 1 简单规则：
         - TREND + HIGH_VOL → TrendPullback
         - RANGE + NORMAL_VOL → BollMR
         """
         strategies = []
-        
+
         regime_type = row["regime_type"]
         vol_state = row["volatility_state"]
         trend_dir = row["trend_direction"]
-        
+
         if regime_type == RegimeType.TREND:
-            if trend_dir != 0:
+            if trend_dir != TrendDirection.NONE:
                 strategies.append("TrendPullback")
             if vol_state == VolatilityState.HIGH:
                 # 高波动趋势中也可以做回归
@@ -358,7 +365,7 @@ class RegimeFilter:
         else:  # RANGE
             if vol_state != VolatilityState.HIGH:
                 strategies.append("BollMR")
-        
+
         return strategies
     
     def is_tradable(self, df: pd.DataFrame) -> bool:
