@@ -10,22 +10,22 @@
 // - PATCH: Bug修复/小优化
 
 #define EA_VERSION_MAJOR    2
-#define EA_VERSION_MINOR    3
+#define EA_VERSION_MINOR    4
 #define EA_VERSION_PATCH    0
-#define EA_VERSION_STRING   "2.3.0"
+#define EA_VERSION_STRING   "2.4.0"
 
 // 里程碑状态
 #define MILESTONE_M1_COMPLETE  true    // Mean Reversion Family
 #define MILESTONE_M2_COMPLETE  true    // Trend Pullback Family
 #define MILESTONE_M5_COMPLETE  true    // Regime Filter
 #define MILESTONE_M6_COMPLETE  true    // Architecture Cleanup
-#define MILESTONE_M7_COMPLETE  false   // XAUUSD Professional Filter
+#define MILESTONE_M7_COMPLETE  true    // XAUUSD Professional Filter
 
 // 构建信息（可由 CI/CD 注入）
 #define EA_BUILD_DATE     __DATE__
 #define EA_BUILD_TIME     __TIME__
-#define EA_GIT_BRANCH     "feature/m6-param-optimization"
-#define EA_GIT_COMMIT     "447e339"
+#define EA_GIT_BRANCH     "feature/m7-xauusd-session-filter"
+#define EA_GIT_COMMIT     ""
 
 //+------------------------------------------------------------------+
 //| 获取版本字符串                                                       |

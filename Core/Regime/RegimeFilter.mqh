@@ -9,6 +9,7 @@
 #include "RegimeIndicators.mqh"
 #include "MarketQuality.mqh"
 #include "SessionQuality.mqh"  // M7: 时段质量评估
+#include "EventFilter.mqh"     // M7: 事件过滤
 
 //+------------------------------------------------------------------+
 //| Regime Filter 参数                                                 |
@@ -30,6 +31,7 @@ private:
     CRegimeIndicators m_indicators;
     CMarketQuality    m_quality;
     CSessionQuality   m_session;  // M7: 时段质量
+    CEventFilter      m_event;    // M7: 事件过滤
     
     // 参数
     double  m_q_score_standby;
@@ -111,6 +113,10 @@ public:
         // M7: 更新时段质量
         m_session.Update();
         
+        // M7: 更新事件过滤
+        double tick_volume = (double)iVolume(_Symbol, PERIOD_CURRENT, 0);
+        m_event.Update(tick_volume);
+        
         // 计算 Q_score（基础值）
         double q_score = m_quality.GetQScore();
         
@@ -125,6 +131,14 @@ public:
             {
                 m_current_state = STATE_STANDBY;
             }
+        }
+        
+        // M7: 应用事件过滤
+        if(EF_Enable && !m_event.IsTradable())
+        {
+            // 新闻窗口或流动性异常时强制 STANDBY
+            m_current_state = STATE_STANDBY;
+            q_score = q_score * m_event.GetRiskWeight();
         }
         
         // 更新状态
@@ -394,6 +408,21 @@ public:
     //| M7: 是否可交易时段
     //+--------------------------------------------------------------
     bool IsSessionTradable() const { return m_session.IsTradable(); }
+    
+    //+--------------------------------------------------------------
+    //| M7: 是否在新闻窗口
+    //+--------------------------------------------------------------
+    bool IsInNewsWindow() const { return m_event.IsInNewsWindow(); }
+    
+    //+--------------------------------------------------------------
+    //| M7: 是否有流动性问题
+    //+--------------------------------------------------------------
+    bool HasLiquidityIssue() const { return m_event.HasLiquidityIssue(); }
+    
+    //+--------------------------------------------------------------
+    //| M7: 获取当前事件
+    //+--------------------------------------------------------------
+    EventType GetCurrentEvent() const { return m_event.GetCurrentEvent(); }
     
     //+--------------------------------------------------------------
     //| 获取 Sub-Type
