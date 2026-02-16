@@ -8,10 +8,18 @@
 #define __STRATEGY_MQH__
 
 #include "Signal.mqh"
+#include "Regime/RegimeFilter.mqh"  // M6.3: 直接 include 以支持指针成员访问
 
 class IStrategy
 {
+protected:
+    // Regime 过滤器指针（由 EA 层注入）
+    CRegimeFilter* m_regime_filter;
+    
 public:
+    // 构造函数
+    IStrategy() : m_regime_filter(NULL) {}
+    
     // 析构函数
     virtual ~IStrategy() {}
     
@@ -31,6 +39,14 @@ public:
     
     // 时间过滤检查（默认通过）
     virtual bool TimeFilterOK() { return true; }
+    
+    // ===== M6.3: Regime 集成接口 =====
+    
+    // 设置 Regime 过滤器（由 EA 层调用）
+    virtual void SetRegimeFilter(CRegimeFilter* filter) { m_regime_filter = filter; }
+    
+    // 获取 Regime 过滤器
+    CRegimeFilter* GetRegimeFilter() const { return m_regime_filter; }
 };
 
 #endif

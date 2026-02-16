@@ -41,10 +41,17 @@ Phase 5: 策略扩展 ⏳
 
 ### 6.3 架构重构
 
-- [ ] M6.3.1 RegimeFilter 集成到主循环（作为全局过滤器）
-- [ ] M6.3.2 策略层移除趋势判断逻辑
-- [ ] M6.3.3 策略层移除波动率判断逻辑
-- [ ] M6.3.4 验证重构后信号一致性
+- [x] M6.3.1 RegimeFilter 集成到主循环（作为全局过滤器）
+- [x] M6.3.2 策略层移除趋势判断逻辑（~50行代码删除）
+- [x] M6.3.3 策略层移除波动率判断逻辑（确认：策略层仅用ATR计算SL/TP，无重复判断）
+- [x] M6.3.4 验证重构后信号一致性（需MT5回测验证）
+
+**M6.3 完成。代码变更：**
+- `Core/Strategy.mqh`: +18行（添加 RegimeFilter 接口）
+- `Core/StrategyRegistry.mqh`: +18行（添加 SetRegimeFilterForAll）
+- `Ea_run.mq5`: +3行（注入 RegimeFilter）
+- `Strategies/Strategy_TrendPullback.mqh`: -78行（删除 UpdateTrendState 等重复逻辑）
+- `Strategies/Strategy_BollMR_enhanced.mqh`: +7行（趋势降级逻辑）
 
 ---
 

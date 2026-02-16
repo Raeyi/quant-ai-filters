@@ -221,6 +221,9 @@ int OnInit()
    
    // 4. 添加到策略管理器
    manager.Add(registry.GetPrimary());
+   
+   // M6.3: 注入 RegimeFilter 到所有策略（消除策略层趋势判断）
+   registry.SetRegimeFilterForAll(&regime_filter);
 
    // 5. 风控管道初始化
    risk_pipeline.Init();

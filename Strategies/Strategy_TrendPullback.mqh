@@ -47,7 +47,6 @@ private:
     long m_buf_volume[];
     
     // 状态
-    TrendDirection m_trend_state;
     bool m_initialized;
     
     // 结构数据
@@ -97,7 +96,6 @@ public:
         m_handle_ema200_htf(INVALID_HANDLE),    // M15 EMA200
         m_handle_ema20_ltf(INVALID_HANDLE),     // M5 EMA20
         m_handle_atr(INVALID_HANDLE),           // ATR 指标句柄
-        m_trend_state(TREND_NONE),              // 趋势状态
         m_initialized(false),                   // 是否已初始化
         m_recent_high(0.0),                     // 最近波段高点
         m_recent_low(0.0),                      // 最近波段低点
@@ -258,9 +256,9 @@ public:
         
         // 更新 VWAP
         UpdateVWAP_HTF();
-
-        // 更新趋势状态
-        UpdateTrendState();
+        
+        // M6.3: 趋势状态由 RegimeFilter 提供，不再在此处计算
+        // 原 UpdateTrendState() 已删除，使用 m_regime_filter->GetTrendDirection()
         
         // 更新结构高低点
         UpdateStructure();
@@ -317,62 +315,9 @@ public:
 
         // Print("VWAP HTF = ", m_vwap_htf); // 调试用
     }
-
-
-    //+--------------------------------------------------------------
-    //| 更新趋势状态 (M15 EMA50/EMA200)
-    //+--------------------------------------------------------------
-    void UpdateTrendState()
-    {
-        if(ArraySize(m_buf_ema50_htf) < 2 || ArraySize(m_buf_ema200_htf) < 2)               // 缓冲区数据不足
-        {
-            m_trend_state = TREND_NONE;                                                     // 默认平
-            return;
-        }
-
-        double ema50_0 = m_buf_ema50_htf[0];                                                // 最新EMA50值
-        double ema200_0 = m_buf_ema200_htf[0];                                              // 最新EMA200值
-        double ema50_1 = m_buf_ema50_htf[1];                                                // EMA50 前一值
-        double ema200_1 = m_buf_ema200_htf[1];                                              // EMA200 前一值
-
-        // ===== 主趋势：EMA 决定 =====
-        if(ema50_0 > ema200_0)
-            m_trend_state = TREND_BULL;
-        else if(ema50_0 < ema200_0)
-            m_trend_state = TREND_BEAR;
-        else
-        {
-            // ★ 新增：允许“趋势延续态”
-            if(ema50_0 > ema50_1 && ema200_0 > ema200_1)
-                m_trend_state = TREND_BULL;
-            else if(ema50_0 < ema50_1 && ema200_0 < ema200_1)
-                m_trend_state = TREND_BEAR;
-            else
-                m_trend_state = TREND_NONE;
-        }
-
-        // ===== VWAP 只做“强弱判断”，不一票否决 =====
-        if(TP_UseVWAP_HTF && m_vwap_htf > 0)
-        {
-            double price = m_buf_close[0];
-
-            // 只有“明显反向 + 偏离过大”才打平
-            double atr = (ArraySize(m_buf_atr) >= 2) ? m_buf_atr[1] : 0;
-            if(atr <= 0) return;
-
-            if(m_trend_state == TREND_BULL)
-            {
-                // 价格深度跌破 VWAP（不是正常回撤）
-                if(price < m_vwap_htf - atr * 0.5)
-                    m_trend_state = TREND_NONE;
-            }
-            else if(m_trend_state == TREND_BEAR)
-            {
-                if(price > m_vwap_htf + atr * 0.5)
-                    m_trend_state = TREND_NONE;
-            }
-        }
-    }
+    
+    // M6.3: UpdateTrendState() 已删除
+    // 趋势状态由 RegimeFilter 统一提供，通过 m_regime_filter->GetTrendDirection() 获取
     
     //+--------------------------------------------------------------
     //| 更新结构高低点
@@ -394,15 +339,18 @@ public:
         m_swing_high = m_recent_high;                                   // 多头：最近波段最高点
         m_swing_low = m_recent_low;                                     // 空头：最近波段最低点
         
+        // M6.3: 使用 RegimeFilter 的趋势方向
+        TrendDirection trend = GetTrendState();
+        
         // 回撤结构点跟踪
         // 多头：寻找回撤过程中的 Lower High
         // 空头：寻找回撤过程中的 Higher Low
-        if(m_trend_state == TREND_BULL)
+        if(trend == TREND_BULL)
         {
             // 找到最近的波段高点后，寻找回撤形成的 Lower High
             m_pullback_lh = FindPullbackLowerHigh();
         }
-        else if(m_trend_state == TREND_BEAR)
+        else if(trend == TREND_BEAR)
         {
             // 找到最近的波段低点后，寻找回撤形成的 Higher Low
             m_pullback_hl = FindPullbackHigherLow();
@@ -520,9 +468,14 @@ public:
     }
     
     //+--------------------------------------------------------------
-    //| 获取趋势状态
+    //| 获取趋势状态（M6.3: 从 RegimeFilter 获取）
     //+--------------------------------------------------------------
-    TrendDirection GetTrendState() const { return m_trend_state; }
+    TrendDirection GetTrendState() const 
+    { 
+        if(m_regime_filter != NULL)
+            return m_regime_filter.GetTrendDirection();
+        return TREND_NONE;  // 降级：无 RegimeFilter 时返回震荡
+    }
     
     //+--------------------------------------------------------------
     //| 判断是否在价值区 (EMA20 或 VWAP 附近)
@@ -714,10 +667,11 @@ public:
             return false;
         }
 
-        // 1. M15 上涨趋势
-        if(m_trend_state != TREND_BULL)
+        // 1. M6.3: 趋势由 RegimeFilter 提供
+        TrendDirection trend = GetTrendState();
+        if(trend != TREND_BULL)
         {
-            // Print("[DEBUG] Long blocked: not BULL, state=", EnumToString(m_trend_state));
+            // Print("[DEBUG] Long blocked: not BULL, state=", EnumToString(trend));
             return false;
         }
         
@@ -792,8 +746,9 @@ public:
         if(TP_TimeFilterEntry && !TimeFilter_CheckSession(TP_Session, BollMR_UseDST, BollMR_DSTShiftHours))
             return false;
 
-        // 1. M15 下跌趋势
-        if(m_trend_state != TREND_BEAR)
+        // 1. M6.3: 趋势由 RegimeFilter 提供
+        TrendDirection trend = GetTrendState();
+        if(trend != TREND_BEAR)
             return false;
         
         // ===== 第1层通过：趋势OK =====
@@ -919,8 +874,9 @@ public:
         // VWAP 确认
         bool vwap_broken = (TP_UseVWAP_LTF && m_vwap_ltf > 0 && bid < m_vwap_ltf - atr * 0.2);
 
-        // 趋势反转
-        if(m_trend_state == TREND_BEAR)
+        // M6.3: 趋势反转检测使用 RegimeFilter
+        TrendDirection trend = GetTrendState();
+        if(trend == TREND_BEAR)
         {
             Print("[", Name(), "] L3 Exit: Trend reversal to BEAR");
             return true;
@@ -991,7 +947,9 @@ public:
 
         bool vwap_broken = (TP_UseVWAP_LTF && m_vwap_ltf > 0 && ask > m_vwap_ltf + atr * 0.2);
 
-        if(m_trend_state == TREND_BULL)
+        // M6.3: 趋势反转检测使用 RegimeFilter
+        TrendDirection trend = GetTrendState();
+        if(trend == TREND_BULL)
         {
             Print("[", Name(), "] L3 Exit: Trend reversal to BULL");
             return true;
@@ -1182,12 +1140,15 @@ public:
         bool shortSig = ShortSignal();
         bool exitSig = HasExitSignal();
         
+        // M6.3: 获取趋势状态用于日志
+        TrendDirection trend = GetTrendState();
+        
         if(!has_position)  // 无持仓
         {
             if(longSig)
             {
                 FillSignal(signal, SIGNAL_BUY);
-                Print("[", Name(), "] Long signal. trend=", EnumToString(m_trend_state),
+                Print("[", Name(), "] Long signal. trend=", EnumToString(trend),
                       " price=", signal.price, " sl=", signal.sl, " tp=", signal.tp,
                       " ema20=", DoubleToString(m_buf_ema20_ltf[1], _Digits),
                       " vwap=", DoubleToString(m_vwap_ltf, _Digits));
@@ -1196,7 +1157,7 @@ public:
             if(shortSig)
             {
                 FillSignal(signal, SIGNAL_SELL);
-                Print("[", Name(), "] Short signal. trend=", EnumToString(m_trend_state),
+                Print("[", Name(), "] Short signal. trend=", EnumToString(trend),
                       " price=", signal.price, " sl=", signal.sl, " tp=", signal.tp,
                       " ema20=", DoubleToString(m_buf_ema20_ltf[1], _Digits),
                       " vwap=", DoubleToString(m_vwap_ltf, _Digits));
@@ -1209,7 +1170,7 @@ public:
             {
                 signal.type = SIGNAL_EXIT;
                 FillSignal(signal, SIGNAL_EXIT);
-                Print("[", Name(), "] Exit signal. trend=", EnumToString(m_trend_state));
+                Print("[", Name(), "] Exit signal. trend=", EnumToString(trend));
                 return signal;
             }
             
@@ -1367,12 +1328,14 @@ public:
     //+--------------------------------------------------------------
     //| 获取当前结构点价格（供 RiskPipeline 冷却解除判断使用）
     //| 返回：多头返回 pullback_lh，空头返回 pullback_hl
+    //| M6.3: 使用 RegimeFilter 的趋势方向
     //+--------------------------------------------------------------
     double GetCurrentStructurePrice() const
     {
-        if(m_trend_state == TREND_BULL)
+        TrendDirection trend = GetTrendState();
+        if(trend == TREND_BULL)
             return m_pullback_lh;
-        else if(m_trend_state == TREND_BEAR)
+        else if(trend == TREND_BEAR)
             return m_pullback_hl;
         return 0.0;
     }

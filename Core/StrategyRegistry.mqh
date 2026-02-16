@@ -7,6 +7,9 @@
 
 #include "Strategy.mqh"
 
+// 前向声明
+class CRegimeFilter;
+
 // 最大策略数量
 #define MAX_REGISTRY_STRATEGIES 16
 
@@ -266,6 +269,21 @@ public:
             return false;
         config = m_configs[index];
         return true;
+    }
+    
+    //+--------------------------------------------------------------
+    //| M6.3: 为所有策略设置 RegimeFilter（消除策略层趋势判断）
+    //+--------------------------------------------------------------
+    void SetRegimeFilterForAll(CRegimeFilter* filter)
+    {
+        for(int i = 0; i < m_count; i++)
+        {
+            if(m_configs[i].strategy != NULL)
+            {
+                m_configs[i].strategy.SetRegimeFilter(filter);
+            }
+        }
+        Print("[StrategyRegistry] RegimeFilter injected to all strategies");
     }
 };
 

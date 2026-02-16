@@ -178,8 +178,14 @@ public:
         }
     }
 
+    // M6.3: 趋势状态优先从 RegimeFilter 获取，降级时使用 MA 判断
     TrendDirection GetTrendState()
     {
+        // 优先使用 RegimeFilter
+        if(m_regime_filter != NULL)
+            return m_regime_filter.GetTrendDirection();
+        
+        // 降级：使用 MA 判断
         double ma_now  = GetMA(0);
         double ma_prev = GetMA(1);
 
