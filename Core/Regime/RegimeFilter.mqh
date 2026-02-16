@@ -8,6 +8,7 @@
 #include "RegimeTypes.mqh"
 #include "RegimeIndicators.mqh"
 #include "MarketQuality.mqh"
+#include "SessionQuality.mqh"  // M7: 时段质量评估
 
 //+------------------------------------------------------------------+
 //| Regime Filter 参数                                                 |
@@ -28,6 +29,7 @@ private:
     // 组件
     CRegimeIndicators m_indicators;
     CMarketQuality    m_quality;
+    CSessionQuality   m_session;  // M7: 时段质量
     
     // 参数
     double  m_q_score_standby;
@@ -106,8 +108,24 @@ public:
         if(!m_quality.Update(close, high, low, adx))
             return false;
         
-        // 计算 Q_score
+        // M7: 更新时段质量
+        m_session.Update();
+        
+        // 计算 Q_score（基础值）
         double q_score = m_quality.GetQScore();
+        
+        // M7: 应用时段权重调整 Q_score
+        if(SQ_Enable)
+        {
+            double session_weight = m_session.GetSessionWeight();
+            q_score = q_score * session_weight;
+            
+            // 低流动性时段强制 STANDBY
+            if(!m_session.IsTradable())
+            {
+                m_current_state = STATE_STANDBY;
+            }
+        }
         
         // 更新状态
         UpdateState(q_score);
@@ -361,6 +379,21 @@ public:
     //| 获取波动率状态
     //+--------------------------------------------------------------
     VolatilityState GetVolatilityState() const { return m_snapshot.volatility_state; }
+    
+    //+--------------------------------------------------------------
+    //| M7: 获取时段类型
+    //+--------------------------------------------------------------
+    ExtendedSessionType GetSessionType() const { return m_session.GetCurrentSession(); }
+    
+    //+--------------------------------------------------------------
+    //| M7: 获取时段权重
+    //+--------------------------------------------------------------
+    double GetSessionWeight() const { return m_session.GetSessionWeight(); }
+    
+    //+--------------------------------------------------------------
+    //| M7: 是否可交易时段
+    //+--------------------------------------------------------------
+    bool IsSessionTradable() const { return m_session.IsTradable(); }
     
     //+--------------------------------------------------------------
     //| 获取 Sub-Type
