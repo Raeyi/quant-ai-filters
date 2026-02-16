@@ -8,6 +8,7 @@
 #define __STRATEGY_TREND_PULLBACK_MQH__
 
 #include "../Core/Strategy.mqh"
+#include "../Core/TimeFilter.mqh"
 #include "../Core/TimeFilter_BollMR.mqh"
 #include "../Core/Risk/AddPositionManager.mqh"
 #include "../Indicators/ATR.mqh"
@@ -218,7 +219,7 @@ public:
     bool TimeFilterOK()
     {
         if(!TP_TimeFilterEntry) return true;
-        return IsInSession();
+        return TimeFilter_CheckSession(TP_Session, BollMR_UseDST, BollMR_DSTShiftHours);
     }
     
     //+--------------------------------------------------------------
@@ -716,7 +717,7 @@ public:
         m_stat_total_checks++;
 
         // 0.1 时间过滤
-        if(TP_TimeFilterEntry && !IsInSession())
+        if(TP_TimeFilterEntry && !TimeFilter_CheckSession(TP_Session, BollMR_UseDST, BollMR_DSTShiftHours))
         {
             // Print("[DEBUG] Long blocked by time filter");
             return false;
@@ -797,7 +798,7 @@ public:
         m_stat_total_checks++;
 
         // 0.1 时间过滤
-        if(TP_TimeFilterEntry && !IsInSession())
+        if(TP_TimeFilterEntry && !TimeFilter_CheckSession(TP_Session, BollMR_UseDST, BollMR_DSTShiftHours))
             return false;
 
         // 1. M15 下跌趋势
@@ -848,140 +849,13 @@ public:
     }
 
     //+--------------------------------------------------------------
-    //| 时间过滤：判断当前是否在允许交易时段
-    //| 独立实现，不依赖 BollMR input 变量
-    //+--------------------------------------------------------------
-    bool IsInSession()
-    {
-        datetime currentTime = TimeCurrent();
-        MqlDateTime timeStruct;
-        TimeToStruct(currentTime, timeStruct);
-        int server_hour = timeStruct.hour;
-
-        string sessions = TP_Session;
-        StringToLower(sessions);
-
-        // 北京时间窗口定义（冬令时）
-        int asia_start = 8,  asia_end = 16;
-        int eu_start   = 15, eu_end   = 24;
-        int us_start   = 20, us_end   = 4;  // 跨午夜
-        int ov_start   = 20, ov_end   = 24;
-
-        // DST 平移
-        if(BollMR_UseDST)
-        {
-            eu_start = NormalizeHour(eu_start + BollMR_DSTShiftHours);
-            eu_end   = NormalizeHour(eu_end   + BollMR_DSTShiftHours);
-            us_start = NormalizeHour(us_start + BollMR_DSTShiftHours);
-            us_end   = NormalizeHour(us_end   + BollMR_DSTShiftHours);
-            ov_start = NormalizeHour(ov_start + BollMR_DSTShiftHours);
-            ov_end   = NormalizeHour(ov_end   + BollMR_DSTShiftHours);
-        }
-
-        // 转换为服务器时间
-        int asia_s = BeijingToServerHour(asia_start);
-        int asia_e = BeijingToServerHour(asia_end);
-        int eu_s   = BeijingToServerHour(eu_start);
-        int eu_e   = BeijingToServerHour(eu_end);
-        int us_s   = BeijingToServerHour(us_start);
-        int us_e   = BeijingToServerHour(us_end);
-        int ov_s   = BeijingToServerHour(ov_start);
-        int ov_e   = BeijingToServerHour(ov_end);
-
-        string list[];
-        int cnt = StringSplit(sessions, ',', list);
-        if(cnt <= 0)
-        {
-            ArrayResize(list, 1);
-            list[0] = sessions;
-            cnt = 1;
-        }
-
-        for(int i = 0; i < cnt; i++)
-        {
-            string s = list[i];
-            StringTrimLeft(s);
-            StringTrimRight(s);
-            if(s == "") continue;
-
-            if(s == "asia" && InWindow(server_hour, asia_s, asia_e))
-                return true;
-            if(s == "europe" && InWindow(server_hour, eu_s, eu_e))
-                return true;
-            if(s == "us" && InWindow(server_hour, us_s, us_e))
-                return true;
-            if(s == "overlap" && InWindow(server_hour, ov_s, ov_e))
-                return true;
-            if((s == "europe+us" || s == "eu+us") &&
-               (InWindow(server_hour, eu_s, eu_e) || InWindow(server_hour, us_s, us_e)))
-                return true;
-        }
-
-        return false;
-    }
-
-    // 辅助函数：小时归一化
-    int NormalizeHour(int hour)
-    {
-        int h = hour % 24;
-        if(h < 0) h += 24;
-        return h;
-    }
-
-    // 辅助函数：北京时间转服务器时间
-    int BeijingToServerHour(int bj_hour)
-    {
-        int server_hour = bj_hour - 8 + BollMR_ServerUTCOffset;
-        return NormalizeHour(server_hour);
-    }
-
-    // 辅助函数：判断是否在时间窗口内
-    bool InWindow(int hour, int start, int end)
-    {
-        if(start == end) return true;
-        if(start <= end) return (hour >= start && hour < end);
-        return (hour >= start || hour < end);  // 跨午夜
-    }
-
-    //+--------------------------------------------------------------
-    //| 获取当前时段名称
+    //| 获取当前时段名称（使用通用接口）
     //+--------------------------------------------------------------
     string GetCurrentSession()
     {
-        datetime currentTime = TimeCurrent();
-        MqlDateTime timeStruct;
-        TimeToStruct(currentTime, timeStruct);
-        int server_hour = timeStruct.hour;
-
-        // 定义时段（同上）
-        int asia_start = 8,  asia_end = 16;
-        int eu_start   = 15, eu_end   = 24;
-        int us_start   = 20, us_end   = 4;
-        int ov_start   = 20, ov_end   = 24;
-
-        if(BollMR_UseDST)
-        {
-            eu_start = NormalizeHour(eu_start + BollMR_DSTShiftHours);
-            eu_end   = NormalizeHour(eu_end   + BollMR_DSTShiftHours);
-            us_start = NormalizeHour(us_start + BollMR_DSTShiftHours);
-            us_end   = NormalizeHour(us_end   + BollMR_DSTShiftHours);
-            ov_start = NormalizeHour(ov_start + BollMR_DSTShiftHours);
-            ov_end   = NormalizeHour(ov_end   + BollMR_DSTShiftHours);
-        }
-
-        int asia_s = BeijingToServerHour(asia_start);
-        int asia_e = BeijingToServerHour(asia_end);
-        int eu_s   = BeijingToServerHour(eu_start);
-        int eu_e   = BeijingToServerHour(eu_end);
-        int us_s   = BeijingToServerHour(us_start);
-        int us_e   = BeijingToServerHour(us_end);
-
-        if(InWindow(server_hour, asia_s, asia_e)) return "asia";
-        if(InWindow(server_hour, us_s, us_e)) return "us";
-        if(InWindow(server_hour, eu_s, eu_e)) return "europe";
-        return "other";
+        return TimeFilter_GetCurrentSession();
     }
-    
+
     //+--------------------------------------------------------------
     //| 四层出场逻辑
     //| 核心：先活下来 → 再吃趋势 → 再放飞

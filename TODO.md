@@ -35,9 +35,9 @@ Phase 5: 策略扩展 ⏳
 
 ### 6.2 代码清理
 
-- [ ] M6.2.1 删除 TrendPullback 中重复的时间过滤代码（第854-921行）
-- [ ] M6.2.2 统一趋势枚举到 RegimeTypes.mqh
-- [ ] M6.2.3 创建统一的 ITimeFilter 接口
+- [x] M6.2.1 删除 TrendPullback 中重复的时间过滤代码（第854-921行）
+- [x] M6.2.2 创建统一的 TimeFilter.mqh 接口
+- [ ] M6.2.3 统一趋势枚举到 RegimeTypes.mqh
 
 ### 6.3 架构重构
 
