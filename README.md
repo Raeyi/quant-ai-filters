@@ -20,32 +20,135 @@ Phase 2: 策略开发 ✅
 Phase 3: Regime 引擎 ✅
 └── M5: Regime Filter      → v2.2.0
 
-Phase 4: AI 增强 🔄
-├── M6: 参数优化 + 数据收集  → v2.3.0 ← 当前
-├── M7: ML 参数优化         → v2.3.0
-└── M8: RL 状态决策         → v2.4.0
+Phase 4: 架构重构 🔄
+├── M6: 架构清理           → v2.3.0 ← 当前
+├── M7: XAUUSD 职业化过滤   → v2.4.0
+└── M8: AI 参数优化         → v2.5.0
 
 Phase 5: 策略扩展 ⏳
-└── M9: XAUUSD Alpha        → v2.5.0
+└── M9: XAUUSD Alpha        → v2.6.0
 ```
 
-### 分支策略
-
-```
-main
-├── release/v2.0.0          # Phase 1 完成
-├── release/v2.1.0          # Phase 2 完成
-├── release/v2.2.0          # Phase 3 完成 ← 当前稳定版
-├── release/v2.3.0          # Phase 4 M6+M7
-└── release/v2.4.0          # Phase 4 M8
-
-开发分支：
-├── feature/m6-param-optimization   # M6 开发 ← 当前
-├── feature/m7-ml-optimization      # M7 开发
-└── feature/m8-rl-decision          # M8 开发
-```
+---
 
 ## 系统架构
+
+### 当前问题：双重过滤
+
+**诊断结果**：当前架构存在严重的重复过滤问题
+
+```
+信号流程（当前 - 臃肿）：
+┌──────────────────────────────────────────────────────────────────┐
+│ Strategy_Combo                                                    │
+│   ├─ BollMR_Enhanced                                              │
+│   │    ├─ TimeFilter ✓ (时间过滤)                                 │
+│   │    ├─ LongTrendOK ✓ (趋势判断)     ← 重复!                   │
+│   │    └─ VolatilityOK ✓ (波动率过滤)  ← 重复!                   │
+│   │                                                               │
+│   └─ TrendPullback                                               │
+│        ├─ IsInSession ✓ (时间过滤)     ← 重复实现!                │
+│        ├─ m_trend_state ✓ (趋势判断)   ← 重复!                   │
+│        └─ ATR 计算 ✓ (波动率)          ← 重复!                   │
+└──────────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ RegimeFilter (状态机)                                            │
+│   ├─ Q-Score ✓ (市场质量)                                        │
+│   ├─ ADX 判断 ✓ (趋势强度)            ← 第三次趋势判断!           │
+│   └─ ATR 百分位 ✓ (波动率状态)         ← 第三次波动率判断!        │
+└──────────────────────────────────────────────────────────────────┘
+                              ↓
+              信号被过度过滤 → 交易机会极少
+```
+
+**重复代码位置**：
+
+| 组件 | 重复功能 | 代码位置 |
+|------|----------|----------|
+| TrendPullback | 时间过滤 | 第854-921行（完全重复） |
+| BollMR/TrendPullback/Regime | 趋势判断 | 各自独立实现 |
+| BollMR/TrendPullback/Regime | 波动率计算 | ATR 计算了3次 |
+
+---
+
+### 新架构：职业化过滤标准
+
+**设计原则**：
+1. **单一职责**：每层只做一件事
+2. **状态统一**：RegimeFilter 是唯一状态来源
+3. **策略简化**：策略只做入场条件判断
+
+```
+信号流程（优化后 - 清晰）：
+┌──────────────────────────────────────────────────────────────────┐
+│ Layer 1: RegimeFilter (全局状态)                                  │
+│   ├─ Q-Score 计算 (eff + fbr + adx)                              │
+│   ├─ 趋势状态 (TREND/RANGE)                                       │
+│   ├─ 波动率状态 (LOW/NORMAL/HIGH)                                 │
+│   └─ 输出：state, sub_type, q_score, direction                   │
+└──────────────────────────────────────────────────────────────────┘
+                              ↓ IsTradable()?
+┌──────────────────────────────────────────────────────────────────┐
+│ Layer 2: Global Filters (全局过滤)                                │
+│   ├─ TimeFilter (时段/流动性)                                     │
+│   ├─ NewsFilter (新闻事件)                                        │
+│   └─ SpreadFilter (点差检查)                                      │
+└──────────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ Layer 3: Strategy (策略入场)                                      │
+│   ├─ BollMR: 只判断 BB 回归确认                                   │
+│   ├─ TrendPullback: 只判断回撤结构                                │
+│   └─ 不再重复判断：趋势、波动率、时间                              │
+└──────────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ Layer 4: Risk Pipeline (风控)                                     │
+│   ├─ 仓位计算 (基于 sub_type)                                     │
+│   ├─ 止损设置                                                     │
+│   └─ 冷却检查                                                     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### XAUUSD 职业化过滤标准
+
+```
+黄金市场过滤层次（职业交易员标准）：
+
+Layer 1: 市场状态（全局）
+├── Q-Score > 0.35（市场质量达标）
+├── ADX 状态（趋势/震荡判断）
+└── 波动率状态（低/正常/高）
+
+Layer 2: 时间过滤（全局）
+├── 活跃时段（伦敦开盘 15:00、纽约开盘 20:00 北京时间）
+├── 避开低流动性（亚洲深夜 00:00-06:00 北京时间）
+└── 重大新闻前后 30 分钟（NFP/FOMC）
+
+Layer 3: 策略入场（局部）
+├── 策略特定条件（不再重复判断趋势/波动）
+└── 信号确认（K线形态、结构突破）
+
+Layer 4: 风控
+├── Sub-Type → 仓位 scale
+├── Sub-Type → 止损 multiplier
+└── 冷却期
+```
+
+**黄金时段权重**：
+
+| 时段 | 北京时间 | 权重 | 特点 |
+|------|----------|------|------|
+| 亚盘 | 08:00-15:00 | 0.7 | 波动小，震荡为主 |
+| 欧盘 | 15:00-20:00 | 1.0 | 主要波动时段 |
+| 美盘 | 20:00-24:00 | 1.2 | 最高波动，趋势机会 |
+| 重叠 | 20:00-24:00 | 1.5 | 欧+美重叠，最佳时机 |
+| 深夜 | 00:00-08:00 | 0.3 | 低流动性，避开 |
+
+---
 
 ### Alpha 核心来源
 
@@ -58,6 +161,8 @@ main
 | **Transition Matrix** | 提前布局下一状态 |
 | **时间 × Regime** | 同一 Regime 不同时段权重不同 |
 | **风险暴露结构** | Sub-Type → 不同止损/仓位参数 |
+
+---
 
 ### Regime 状态机
 
@@ -99,53 +204,59 @@ main
 
 ## Q-Score 计算
 
-### 当前公式（v2.2.0）
+### 当前公式（v2.3.0）
 
-**基于基准值的相对评分**：
+**三维度评分**：
 
 ```
-Q = 0.5 + eff_score + fbr_score
+Q = 0.5 + eff_score + fbr_score + adx_score
 
-eff_score = w1 × (efficiency / baseline_eff - 1)
-fbr_score = w2 × (baseline_fbr - fbr) / baseline_fbr
+eff_score = w_eff × (efficiency / baseline_eff - 1)
+fbr_score = w_fbr × (baseline_fbr - fbr) / baseline_fbr
+adx_score = w_adx × max(0, (adx - baseline_adx) / 25)
 ```
 
 **当前参数**：
-- `w1 = w2 = 0.25`（权重）
-- `baseline_eff = 0.15`（效率基准）
-- `baseline_fbr = 0.50`（假突破率基准）
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `w_eff` | 0.25 | 效率权重 |
+| `w_fbr` | 0.25 | 假突破率权重 |
+| `w_adx` | 0.20 | ADX 权重 |
+| `baseline_eff` | 0.10 | 效率基准值 |
+| `baseline_fbr` | 0.40 | 假突破率基准值 |
+| `baseline_adx` | 25.0 | ADX 基准值（趋势分界线） |
 
 **设计依据**：
 
 | 设计点 | 说明 | 问题 |
 |--------|------|------|
 | 基准值 0.5 | 中性起点 | ✅ 合理 |
-| 权重 0.25 | 两个因子各贡献 ±0.25 | ⚠️ 未经验证 |
+| 权重参数 | 三个因子各自贡献 | ⚠️ 需要优化 |
 | 基准值来源 | 回测数据观察 | ⚠️ 可能不稳定 |
-| 仅 2 维度 | eff + fbr | ⚠️ 信息不足 |
+| 三维度 | eff + fbr + adx | ✅ 信息更全面 |
 | 线性关系 | 线性贡献 | ⚠️ 可能非线性 |
 
 ### 优化路径
 
-**Phase 1: 特征扩展**
+**Phase 1: 特征扩展（已完成）**
 
-新增维度：
+新增 ADX 维度：
+- adx_score: 趋势强度贡献
+- ADX > 25 时加分，最高贡献 0.20
 
-| 维度 | 计算方式 | 价值 | 优先级 |
-|------|----------|------|--------|
-| **adx_score** | ADX / 50 - 1 | 趋势强度 | 高 |
-| **atr_ratio** | ATR / MA(ATR, 20) | 波动率异常 | 高 |
-| **session_weight** | 按时段调整基准 | 时段差异 | 中 |
-| **volume_ratio** | Volume / MA(Volume) | 流动性 | 中 |
-| **momentum_persist** | 连续同向K线比例 | 动量持续 | 低 |
+**Phase 2: 参数网格搜索**
 
-**扩展后公式**：
-
+```bash
+# 运行参数优化
+cd Python
+python regime_param_optimize.py \
+  --data "E:/mt5_test_datas/mt5/XAUUSD_M5.csv" \
+  --output data/regime_optimize_results.csv \
+  --quick  # 快速模式
 ```
-Q = w0 + w1×eff_score + w2×fbr_score + w3×adx_score + w4×atr_ratio_score
-```
 
-**Phase 2: 权重优化（ML）**
+**Phase 3: ML 权重优化**
 
 使用监督学习学习最优权重：
 
@@ -156,7 +267,7 @@ Q = w0 + w1×eff_score + w2×fbr_score + w3×adx_score + w4×atr_ratio_score
 # 模型：线性回归 / XGBoost
 ```
 
-**Phase 3: 动态基准（RL）**
+**Phase 4: 动态基准（RL）**
 
 基准值根据市场环境动态调整：
 
@@ -204,11 +315,11 @@ quant-ai-filters/
 │   ├── Bollinger.mqh
 │   └── ATR.mqh
 ├── Python/                 # Python 回测工具
-│   ├── regime_param_optimize.py  # M6.2 参数网格搜索
-│   ├── data_collector.py         # M6.4 数据收集器
+│   ├── regime_param_optimize.py  # 参数网格搜索
+│   ├── data_collector.py         # 数据收集器
 │   └── regime/             # Regime Filter Python 模块
 └── docs/
-    └── ai_data_schema.md   # M6.5 数据 Schema
+    └── ai_data_schema.md   # 数据 Schema
 ```
 
 ### 核心模块职责
@@ -222,20 +333,21 @@ quant-ai-filters/
 | `RiskPipeline` | 风控管道 | 统一管理所有风控检查 |
 | `TradeExecutor` | 交易执行 | 封装 MT5 交易 API |
 
-### 数据流向
+### 数据流向（优化后）
 
 ```
 Ea_run.mq5 (OnTick)
     ↓
-StrategyRegistry.UpdateIndicators()
+CRegimeFilter.Update()
+    ↓ → Q_score, State, Direction, Volatility
     ↓
-CRegimeFilter.Update() → Q_score → State
-    ↓ (ACTIVE)
-StrategyManager.GetSignal() → Signal
-    ↓
-RiskPipeline.BuildTrade() → TradeRequest
-    ↓
-TradeExecutor.Execute() → MT5 API
+Global Filters (Time, Spread, News)
+    ↓ IsTradable()?
+StrategyManager.GetSignal()
+    ↓ 策略只做入场条件判断
+RiskPipeline.BuildTrade()
+    ↓ 基于 Sub-Type 调整仓位/止损
+TradeExecutor.Execute()
 ```
 
 ---
@@ -275,85 +387,84 @@ TradeExecutor.Execute() → MT5 API
 
 ---
 
-## M6-M8: AI 增强详细设计
+## M6-M8: 详细设计
 
-### M6: 参数优化 + 数据收集
+### M6: 架构清理
 
-#### M6.1 Q-Score 优化
+#### M6.1 架构诊断
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| M6.1.1 | ✅ | 新公式实现（基准值 + 相对评分） |
-| M6.1.2 | ✅ | 阈值调整（Standby: 0.35, Active: 0.45） |
-| M6.1.3 | ⏳ | ADX 维度加入 |
-| M6.1.4 | ⏳ | ATR_ratio 维度加入 |
-| M6.1.5 | ⏳ | Session 权重动态化 |
+| M6.1.1 | ✅ | 分析双重过滤问题 |
+| M6.1.2 | ✅ | 识别重复代码 |
+| M6.1.3 | ✅ | 设计新架构方案 |
 
-#### M6.2 参数网格搜索
+#### M6.2 代码清理
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| M6.2.1 | ⏳ | 删除 TrendPullback 重复时间过滤代码 |
+| M6.2.2 | ⏳ | 统一趋势枚举到 RegimeTypes.mqh |
+| M6.2.3 | ⏳ | 创建统一的 ITimeFilter 接口 |
+
+#### M6.3 架构重构
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| M6.3.1 | ⏳ | RegimeFilter 集成到主循环 |
+| M6.3.2 | ⏳ | 策略层移除趋势判断逻辑 |
+| M6.3.3 | ⏳ | 策略层移除波动率判断逻辑 |
+| M6.3.4 | ⏳ | 验证重构后信号一致性 |
+
+---
+
+### M7: XAUUSD 职业化过滤
+
+#### 7.1 黄金市场特点
+
+| 特点 | 说明 | 过滤策略 |
+|------|------|----------|
+| 时段特性 | 伦敦/纽约时段波动大 | 时间权重过滤 |
+| 避险属性 | 风险事件时波动剧增 | 新闻事件过滤 |
+| 流动性 | 期货/现货联动 | 点差/成交量过滤 |
+
+#### 7.2 职业化过滤实现
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| M7.3.1 | ⏳ | XAUUSD 时段过滤器 |
+| M7.3.2 | ⏳ | 新闻事件过滤器（NFP/FOMC） |
+| M7.3.3 | ⏳ | 流动性过滤器（点差/成交量） |
+| M7.3.4 | ⏳ | 统一过滤层入口（FilterPipeline） |
+
+---
+
+### M8: AI 参数优化
+
+#### 8.1 参数网格搜索
 
 ```bash
-# 运行参数优化
-cd Python
-python regime_param_optimize.py \
+# 完整优化
+python Python/regime_param_optimize.py \
   --data "E:/mt5_test_datas/mt5/XAUUSD_M5.csv" \
   --output data/regime_optimize_results.csv
+
+# 快速模式
+python Python/regime_param_optimize.py \
+  --data "E:/mt5_test_datas/mt5/XAUUSD_M5.csv" \
+  --quick
 ```
 
-#### M6.4 数据收集
+#### 8.2 数据收集
 
 ```bash
-# 收集训练数据
-cd Python
-python data_collector.py \
+python Python/data_collector.py \
   --data "E:/mt5_test_datas/mt5/XAUUSD_M5.csv" \
   --output data/features_train.csv \
   --label
 ```
 
-**输出字段**：见 `docs/ai_data_schema.md`
-
-#### M6.3 Walk-Forward 验证
-
-```
-数据分割：
-├── Train: 2024.01 - 2024.06
-├── Valid: 2024.07 - 2024.09
-└── Test:  2024.10 - 2024.12
-
-滚动窗口：
-Window 1: Train[1-6月] → Test[7月]
-Window 2: Train[2-7月] → Test[8月]
-...
-```
-
----
-
-### M7: ML 参数优化
-
-#### 7.1 特征工程
-
-```python
-# 原始特征
-raw_features = ['efficiency', 'false_breakout_rate', 'adx', 'atr', 
-                'regime_state', 'sub_type', 'hour', 'session']
-
-# 时序特征
-lag_features = ['efficiency_lag1', 'efficiency_lag5', 
-                'fbr_lag1', 'fbr_lag5']
-
-# 交叉特征
-cross_features = ['eff_x_adx', 'fbr_x_volatility']
-```
-
-#### 7.2 标签生成
-
-| 标签类型 | 定义 | 用途 |
-|----------|------|------|
-| win_rate | 未来 N 根 K 线胜率 | 分类任务 |
-| pnl_ratio | 未来盈亏比 | 回归任务 |
-| sharpe | 未来收益夏普比 | 回归任务 |
-
-#### 7.3 模型训练
+#### 8.3 ML 参数优化
 
 ```python
 # 特征 → Q-Score 权重
@@ -363,110 +474,8 @@ model = XGBRegressor(
     max_depth=5,
 )
 
-# 训练
 model.fit(X_train, y_train)
-
-# 提取特征重要性
 importance = model.feature_importances_
-```
-
-#### 7.4 参数导出
-
-```python
-# 生成 MQL5 代码
-def export_to_mql5(weights, baselines):
-    code = f"""
-    // ML 优化后的参数
-    double w_eff = {weights['eff']:.4f};
-    double w_fbr = {weights['fbr']:.4f};
-    double w_adx = {weights['adx']:.4f};
-    double baseline_eff = {baselines['eff']:.4f};
-    double baseline_fbr = {baselines['fbr']:.4f};
-    """
-    return code
-```
-
----
-
-### M8: RL 状态决策
-
-#### 8.1 环境设计
-
-```python
-import gym
-from gym import spaces
-
-class RegimeTradingEnv(gym.Env):
-    def __init__(self, df, initial_balance=10000):
-        super().__init__()
-        
-        # 状态空间
-        self.observation_space = spaces.Dict({
-            "efficiency": spaces.Box(0, 1, shape=(1,)),
-            "false_breakout_rate": spaces.Box(0, 1, shape=(1,)),
-            "adx": spaces.Box(0, 100, shape=(1,)),
-            "atr_ratio": spaces.Box(0, 3, shape=(1,)),
-            "session": spaces.Discrete(4),
-            "volatility_state": spaces.Discrete(3),
-        })
-        
-        # 动作空间：调整参数
-        self.action_space = spaces.Dict({
-            "w_eff": spaces.Box(0.1, 0.4, shape=(1,)),      # 效率权重
-            "w_fbr": spaces.Box(0.1, 0.4, shape=(1,)),      # 假突破权重
-            "q_standby": spaces.Box(0.25, 0.45, shape=(1,)), # STANDBY 阈值
-            "q_active": spaces.Box(0.40, 0.60, shape=(1,)),  # ACTIVE 阈值
-        })
-    
-    def step(self, action):
-        # 应用动作，更新参数
-        # 运行一步交易
-        # 计算奖励
-        reward = self._calculate_reward()
-        return observation, reward, done, info
-    
-    def _calculate_reward(self):
-        # 奖励函数：夏普比 - 回撤惩罚
-        sharpe = self.returns.mean() / (self.returns.std() + 1e-8) * np.sqrt(252)
-        dd_penalty = max(0, self.max_drawdown - 0.1) * 10
-        return sharpe - dd_penalty
-```
-
-#### 8.2 训练流程
-
-```python
-from stable_baselines3 import PPO
-
-# 创建环境
-env = RegimeTradingEnv(df_train)
-
-# 创建模型
-model = PPO(
-    "MultiInputPolicy",
-    env,
-    learning_rate=3e-4,
-    n_steps=2048,
-    batch_size=64,
-    verbose=1,
-)
-
-# 训练
-model.learn(total_timesteps=100000)
-
-# 保存
-model.save("models/rl_regime_policy.zip")
-```
-
-#### 8.3 部署架构
-
-```
-训练环境 (Python)
-    ↓ 训练完成
-ONNX 模型导出
-    ↓ 
-MQL5 推理集成
-    ↓
-EA 实时推理
 ```
 
 ---
@@ -477,8 +486,8 @@ EA 实时推理
 
 ```
 Regime Filter 设置:
-├── RF_Q_Score_Standby = 0.30  # STANDBY 阈值
-├── RF_Q_Score_Active = 0.40   # ACTIVE 阈值
+├── RF_Q_Score_Standby = 0.35  # STANDBY 阈值
+├── RF_Q_Score_Active = 0.45   # ACTIVE 阈值
 ├── RF_Transition_Bars = 3     # 过渡期 K 线数
 ├── RF_Hysteresis = 0.05       # 滞后阈值
 └── RF_Enable_SubType = true   # 启用 Sub-Type
@@ -487,6 +496,10 @@ Regime Filter 设置:
 ├── MQ_Efficiency_Period = 20
 ├── MQ_Efficiency_Baseline = 0.10
 ├── MQ_FBR_Baseline = 0.40
+├── MQ_ADX_Baseline = 25.0
+├── MQ_Weight_Eff = 0.25
+├── MQ_Weight_FBR = 0.25
+└── MQ_Weight_ADX = 0.20
 ```
 
 ---
@@ -518,6 +531,7 @@ python data_collector.py --data /path/to/XAUUSD_M5.csv --label
 
 | 版本 | 里程碑 | 说明 |
 |------|--------|------|
+| v2.3.0 | M6 | 架构清理 + ADX 维度 |
 | v2.2.0 | M5 | Regime Filter + StrategyRegistry + Q-Score优化 |
 | v2.1.0 | M3-M4 | Mean Reversion + TrendPullback 策略族 |
 | v2.0.0 | M1-M2 | 策略框架 + 风控管道 |
