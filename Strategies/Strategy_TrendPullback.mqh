@@ -10,6 +10,7 @@
 #include "../Core/Strategy.mqh"
 #include "../Core/TimeFilter.mqh"
 #include "../Core/TimeFilter_BollMR.mqh"
+#include "../Core/Regime/RegimeTypes.mqh"
 #include "../Core/Risk/AddPositionManager.mqh"
 #include "../Indicators/ATR.mqh"
 #include "../Indicators/MA.mqh"
@@ -17,16 +18,6 @@
 #include "../Core/Inputs_All.mqh"
 
 // 输入参数定义在 Inputs_All.mqh，此文件不再重复声明
-
-//+------------------------------------------------------------------+
-//| 趋势状态枚举                                                       |
-//+------------------------------------------------------------------+
-enum TrendState
-{
-    TREND_FLAT  = 0,    // 震荡
-    TREND_BULL  = 1,    // 上涨趋势
-    TREND_BEAR  = -1    // 下跌趋势
-};
 
 //+------------------------------------------------------------------+
 //| TrendPullback 策略类                                              |
@@ -56,7 +47,7 @@ private:
     long m_buf_volume[];
     
     // 状态
-    TrendState m_trend_state;
+    TrendDirection m_trend_state;
     bool m_initialized;
     
     // 结构数据
@@ -106,7 +97,7 @@ public:
         m_handle_ema200_htf(INVALID_HANDLE),    // M15 EMA200
         m_handle_ema20_ltf(INVALID_HANDLE),     // M5 EMA20
         m_handle_atr(INVALID_HANDLE),           // ATR 指标句柄
-        m_trend_state(TREND_FLAT),              // 趋势状态
+        m_trend_state(TREND_NONE),              // 趋势状态
         m_initialized(false),                   // 是否已初始化
         m_recent_high(0.0),                     // 最近波段高点
         m_recent_low(0.0),                      // 最近波段低点
@@ -335,7 +326,7 @@ public:
     {
         if(ArraySize(m_buf_ema50_htf) < 2 || ArraySize(m_buf_ema200_htf) < 2)               // 缓冲区数据不足
         {
-            m_trend_state = TREND_FLAT;                                                     // 默认平
+            m_trend_state = TREND_NONE;                                                     // 默认平
             return;
         }
 
@@ -357,7 +348,7 @@ public:
             else if(ema50_0 < ema50_1 && ema200_0 < ema200_1)
                 m_trend_state = TREND_BEAR;
             else
-                m_trend_state = TREND_FLAT;
+                m_trend_state = TREND_NONE;
         }
 
         // ===== VWAP 只做“强弱判断”，不一票否决 =====
@@ -373,12 +364,12 @@ public:
             {
                 // 价格深度跌破 VWAP（不是正常回撤）
                 if(price < m_vwap_htf - atr * 0.5)
-                    m_trend_state = TREND_FLAT;
+                    m_trend_state = TREND_NONE;
             }
             else if(m_trend_state == TREND_BEAR)
             {
                 if(price > m_vwap_htf + atr * 0.5)
-                    m_trend_state = TREND_FLAT;
+                    m_trend_state = TREND_NONE;
             }
         }
     }
@@ -531,7 +522,7 @@ public:
     //+--------------------------------------------------------------
     //| 获取趋势状态
     //+--------------------------------------------------------------
-    TrendState GetTrendState() const { return m_trend_state; }
+    TrendDirection GetTrendState() const { return m_trend_state; }
     
     //+--------------------------------------------------------------
     //| 判断是否在价值区 (EMA20 或 VWAP 附近)

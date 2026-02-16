@@ -355,7 +355,7 @@ public:
     //+--------------------------------------------------------------
     //| 获取趋势方向
     //+--------------------------------------------------------------
-    int GetTrendDirection() const { return m_snapshot.trend_direction; }
+    TrendDirection GetTrendDirection() const { return m_snapshot.trend_direction; }
     
     //+--------------------------------------------------------------
     //| 获取波动率状态

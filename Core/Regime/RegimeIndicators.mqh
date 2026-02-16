@@ -47,7 +47,7 @@ private:
     double  m_trend_strength;
     double  m_volatility;
     VolatilityState m_vol_state;
-    int     m_trend_direction;
+    TrendDirection  m_trend_direction;
     
     // 波动率历史 (用于百分位计算)
     double  m_vol_history[];
@@ -70,7 +70,7 @@ public:
         m_trend_strength(0.0),
         m_volatility(0.0),
         m_vol_state(VOL_NORMAL),
-        m_trend_direction(0),
+        m_trend_direction(TREND_NONE),
         m_vol_history_count(0)
     {
         ArraySetAsSeries(m_adx_buffer, true);
@@ -160,11 +160,11 @@ public:
         // 计算趋势方向
         double di_diff = m_plus_di_buffer[0] - m_minus_di_buffer[0];
         if(di_diff > 5)
-            m_trend_direction = 1;
+            m_trend_direction = TREND_BULL;
         else if(di_diff < -5)
-            m_trend_direction = -1;
+            m_trend_direction = TREND_BEAR;
         else
-            m_trend_direction = 0;
+            m_trend_direction = TREND_NONE;
         
         return true;
     }
@@ -248,7 +248,7 @@ public:
     //+--------------------------------------------------------------
     //| 获取趋势方向
     //+--------------------------------------------------------------
-    int GetTrendDirection() const { return m_trend_direction; }
+    TrendDirection GetTrendDirection() const { return m_trend_direction; }
     
     //+--------------------------------------------------------------
     //| 获取 ADX 值

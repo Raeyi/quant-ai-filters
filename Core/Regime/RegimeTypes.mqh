@@ -25,6 +25,17 @@ enum RegimeType
 };
 
 //+------------------------------------------------------------------+
+//| 趋势方向枚举（统一）                                                |
+//| 使用 1/-1/0 方便数值计算和方向判断                                   |
+//+------------------------------------------------------------------+
+enum TrendDirection
+{
+    TREND_NONE  = 0,     // 无趋势/震荡
+    TREND_BULL  = 1,     // 多头趋势
+    TREND_BEAR  = -1     // 空头趋势
+};
+
+//+------------------------------------------------------------------+
 //| Regime 细分类型枚举                                                 |
 //+------------------------------------------------------------------+
 enum RegimeSubType
@@ -82,7 +93,7 @@ struct RegimeSnapshot
     RegimeType      regime_type;        // 市场状态类型
     VolatilityState volatility_state;   // 波动率状态
     RegimeSubType   sub_type;           // Sub-Type
-    int             trend_direction;    // 趋势方向 (1=多, -1=空, 0=无)
+    TrendDirection  trend_direction;    // 趋势方向
     
     // 指标
     double          trend_strength;     // 趋势强度 [0, 1]
@@ -104,7 +115,7 @@ struct RegimeSnapshot
         regime_type = REGIME_RANGE;
         volatility_state = VOL_NORMAL;
         sub_type = SUBTYPE_UNKNOWN;
-        trend_direction = 0;
+        trend_direction = TREND_NONE;
         trend_strength = 0.0;
         efficiency = 0.5;
         false_breakout_rate = 0.0;
@@ -209,6 +220,17 @@ string VolatilityStateToString(VolatilityState vol)
         case VOL_HIGH:   return "HIGH";
         case VOL_NORMAL: return "NORMAL";
         case VOL_LOW:    return "LOW";
+    }
+    return "UNKNOWN";
+}
+
+string TrendDirectionToString(TrendDirection dir)
+{
+    switch(dir)
+    {
+        case TREND_BULL: return "BULL";
+        case TREND_BEAR: return "BEAR";
+        case TREND_NONE: return "NONE";
     }
     return "UNKNOWN";
 }

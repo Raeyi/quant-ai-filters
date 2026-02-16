@@ -6,6 +6,7 @@
 #include "../Indicators/MA.mqh"
 #include "../Core/Strategy.mqh"
 #include "../Core/TimeFilter_BollMR.mqh"
+#include "../Core/Regime/RegimeTypes.mqh"
 #include "../Core/Inputs_all.mqh"
 
 class Strategy_BollMR : public IStrategy
@@ -36,7 +37,7 @@ public:
             Print("[" + Name() + "] Failed to initialize EMA indicator");
             return false;
         }
-        
+
         Print("[" + Name() + "]  indicators initialized successfully");
 
         exit_ticket = 0;
@@ -45,13 +46,6 @@ public:
 
         return true;
     }
-    
-    enum ENUM_TREND_STATE
-                {
-                    TREND_BULL,      // 明确多头
-                    TREND_FLAT,      // 震荡 / 弱多
-                    TREND_BEAR       // 空头
-                };
 
     // 更新指标数据
     bool UpdateIndicators()
@@ -165,7 +159,7 @@ public:
         }
         else if(mode == "C")
         {
-            ENUM_TREND_STATE trend = GetTrendState();
+            TrendDirection trend = GetTrendState();
 
             // 只要不是明确空头，就允许做回归
             if(trend == TREND_BEAR)
@@ -184,7 +178,7 @@ public:
         }
     }
 
-    ENUM_TREND_STATE GetTrendState()
+    TrendDirection GetTrendState()
     {
         double ma_now  = GetMA(0);
         double ma_prev = GetMA(1);
@@ -198,7 +192,7 @@ public:
             return TREND_BEAR;
 
         // 其余情况视为震荡
-        return TREND_FLAT;
+        return TREND_NONE;
     }
 
     bool ShortSignal(string mode)
@@ -231,7 +225,7 @@ public:
         }
         else if(mode == "C")
         {
-            ENUM_TREND_STATE trend = GetTrendState();
+            TrendDirection trend = GetTrendState();
 
             // 只要不是明确多头，就允许做回归
             if(trend == TREND_BULL)
