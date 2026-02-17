@@ -189,7 +189,7 @@ int OnInit()
    registry.Register("trend_pullback", &trend_pullback);
    
    // 注册组合策略的子策略（标记为 combo_child）
-   registry.Register("boll_rsi_time_child", &boll_enhanced, true);
+   registry.Register("boll_enhanced_child", &boll_enhanced, true);
    registry.Register("trend_pullback_child", &trend_pullback, true);
    
    // 2. 选择策略变体
@@ -199,7 +199,7 @@ int OnInit()
    // 组合策略特殊处理
    if(g_boll_variant == "combo")
    {
-      combo.AddStrategy(&boll_rsi_time, "BollMR_rsi_time");
+      combo.AddStrategy(&boll_enhanced, "BollMR_enhanced");
       combo.AddStrategy(&trend_pullback, "TrendPullback");
       registry.RegisterCombo(&combo, "combo");
    }
@@ -377,6 +377,7 @@ void OnTick()
             regime_filter.PrintState();
          }
          signal.type = SIGNAL_NONE;
+         signal.source = "";  // 清空 source，表示信号被过滤
       }
    }
 

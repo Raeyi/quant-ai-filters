@@ -29,7 +29,6 @@ input group "========== Session Quality 设置 =========="
 input bool    SQ_Enable = true;              // 启用时段质量评估
 input double  SQ_LowLiquidityPenalty = 0.3;  // 低流动性惩罚系数
 input double  SQ_OverlapBonus = 1.3;         // 重叠时段加成
-input int     SQ_NewsAvoidMinutes = 30;      // 新闻前后回避分钟
 
 //+------------------------------------------------------------------+
 //| 时段质量评估类                                                     |
@@ -39,8 +38,6 @@ class CSessionQuality
 private:
     ExtendedSessionType m_current_session;
     double m_session_weight;
-    int m_minutes_to_news;
-    bool m_news_avoid;
     
     // 服务器时间偏移
     int m_server_utc_offset;
@@ -52,8 +49,6 @@ public:
     CSessionQuality() : 
         m_current_session(EXT_SESSION_LOW_LIQUIDITY),
         m_session_weight(1.0),
-        m_minutes_to_news(-1),
-        m_news_avoid(false),
         m_server_utc_offset(BollMR_ServerUTCOffset)
     {}
     
@@ -64,10 +59,6 @@ public:
     {
         m_current_session = DetectSession();
         m_session_weight = CalculateSessionWeight();
-        
-        // 新闻事件检测（待实现）
-        m_news_avoid = false;
-        m_minutes_to_news = -1;
     }
     
     //+--------------------------------------------------------------
@@ -178,24 +169,12 @@ public:
     double GetSessionWeight() const { return m_session_weight; }
     
     //+--------------------------------------------------------------
-    //| 是否在新闻回避窗口
-    //+--------------------------------------------------------------
-    bool IsNewsAvoidWindow() const { return m_news_avoid; }
-    
-    //+--------------------------------------------------------------
     //| 是否适合交易
     //+--------------------------------------------------------------
     bool IsTradable() const
     {
         // 低流动性时段不交易
-        if(m_current_session == EXT_SESSION_LOW_LIQUIDITY)
-            return false;
-        
-        // 新闻回避窗口不交易
-        if(m_news_avoid)
-            return false;
-        
-        return true;
+        return m_current_session != EXT_SESSION_LOW_LIQUIDITY;
     }
     
     //+--------------------------------------------------------------
