@@ -24,7 +24,7 @@
 // 构建信息（可由 CI/CD 注入）
 #define EA_BUILD_DATE     __DATE__
 #define EA_BUILD_TIME     __TIME__
-#define EA_GIT_BRANCH     "feature/m7-xauusd-session-filter"
+#define EA_GIT_BRANCH     "feature/m8-ai-optimization"
 #define EA_GIT_COMMIT     ""
 
 //+------------------------------------------------------------------+
