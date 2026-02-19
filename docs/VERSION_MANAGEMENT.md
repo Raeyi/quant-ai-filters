@@ -45,6 +45,8 @@ git push origin EA_2.2.0 --tags
 | 2.0.0 | - | 2025-01 | 初始版本 |
 | 2.1.0 | M1+M2 | 2026-02 | Mean Reversion + TrendPullback + Combo 优化 |
 | 2.2.0 | Regime | 2026-02 | Regime Filter + StrategyRegistry + Q-Score优化 |
+| 2.3.0 | M6 | 2026-02 | 架构清理 + 策略注册表 + RegimeFilter 集成 |
+| 2.4.0 | M7 | 2026-02 | XAUUSD 职业化过滤 + SessionQuality + EventFilter + 特征扩展(28列) |
 
 ## CI/CD 配置
 
@@ -72,12 +74,14 @@ git push origin EA_2.2.0 --tags
 ## 分支策略
 
 ```
-EA_2.2.0 (当前主分支)
+EA_2.4.0 (当前主分支)
     ↑
-    ├── milestone/m1-mean-reversion-family → 已合并 → v2.1.0
-    ├── milestone/m2-trend-pullback       → 已合并 → v2.1.0
-    ├── feature/v2.2.0-development        → 已合并 → v2.2.0
-    └── milestone/m3-xauusd-alpha         → 待开发 → v2.3.0
+    ├── milestone/m1-mean-reversion-family    → 已合并 → v2.1.0
+    ├── milestone/m2-trend-pullback           → 已合并 → v2.1.0
+    ├── feature/v2.2.0-development            → 已合并 → v2.2.0
+    ├── feature/m6-architecture-cleanup       → 已合并 → v2.3.0
+    ├── feature/m7-xauusd-session-filter      → 已合并 → v2.4.0
+    └── feature/m8-ai-optimization            → 待开发 → v2.5.0
 ```
 
 ### 合并规则

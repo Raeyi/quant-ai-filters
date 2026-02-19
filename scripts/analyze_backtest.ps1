@@ -1,14 +1,18 @@
-# MT5 回测数据快速分析脚本 (PowerShell)
+# MT5 回测数据快速分析脚本 (v2.4.0+)
 # 用法: .\analyze_backtest.ps1 -SignalsFile "C:\path\to\signals_mt5.csv"
+#       .\analyze_backtest.ps1 -SignalsFile "signals.csv" -FeaturesFile "features.csv"
 
 param(
     [Parameter(Mandatory=$true)]
-    [string]$SignalsFile
+    [string]$SignalsFile,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$FeaturesFile
 )
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "MT5 回测数据快速分析" -ForegroundColor Cyan
+Write-Host "MT5 回测数据快速分析 (v2.4.0+)" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 
 # 检查文件
@@ -168,6 +172,37 @@ if ($entryCount -gt 0) {
     foreach ($src in $sources) {
         $shortName = $src.Name.Replace('combo_single_', '')
         Write-Host "  $shortName : $($src.Count)"
+    }
+}
+
+# 7. 扩展特征分析 (如果提供了特征文件)
+if ($FeaturesFile -and (Test-Path $FeaturesFile)) {
+    Write-Host ""
+    Write-Host "============================================" -ForegroundColor Green
+    Write-Host "7. 扩展特征分析" -ForegroundColor Green
+    Write-Host "============================================" -ForegroundColor Green
+    
+    $features = Import-Csv $FeaturesFile -Delimiter "`t"
+    $featureCount = $features.Count
+    
+    # 检查列数
+    $cols = $features[0].PSObject.Properties.Name
+    Write-Host "  特征记录数: $featureCount"
+    Write-Host "  特征列数: $($cols.Count)"
+    
+    if ($cols.Count -lt 15) {
+        Write-Host "  ⚠️ 特征列数不足，建议重新运行 EA 生成完整数据" -ForegroundColor Yellow
+    } else {
+        Write-Host "  ✅ 特征数据完整，可用于 ML/RL 训练" -ForegroundColor Green
+    }
+    
+    # 显示部分特征统计
+    if ($features[0].q_score) {
+        $qScoreVals = $features | ForEach-Object { [double]$_.q_score } | Where-Object { $_ -gt 0 }
+        if ($qScoreVals) {
+            $qMean = [math]::Round(($qScoreVals | Measure-Object -Average).Average, 3)
+            Write-Host "  Q-Score 均值: $qMean"
+        }
     }
 }
 

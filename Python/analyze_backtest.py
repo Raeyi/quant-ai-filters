@@ -1,9 +1,15 @@
 """
-MT5 回测数据分析脚本
+MT5 回测数据分析脚本 (v2.4.0+)
 
 用法:
     python analyze_backtest.py --signals "C:\path\to\signals_mt5.csv"
     python analyze_backtest.py --signals "signals.csv" --features "features.csv"
+
+功能:
+    - 分析信号数据 (signals_mt5.csv)
+    - 分析特征数据 (features.csv) - 支持 25+ 扩展特征
+    - 生成诊断报告
+    - 为 ML/RL 训练准备数据
 """
 
 import argparse
@@ -32,10 +38,86 @@ def load_signals(filepath: str) -> pd.DataFrame:
 
 
 def load_features(filepath: str) -> pd.DataFrame:
-    """加载特征数据"""
+    """加载特征数据（支持扩展格式）"""
     df = pd.read_csv(filepath, sep='\t')
     df['time'] = pd.to_datetime(df['time'])
     return df
+
+
+def analyze_features_distribution(df: pd.DataFrame) -> Dict:
+    """分析扩展特征分布（ML/RL 准备）"""
+    print("\n" + "="*60)
+    print("📊 扩展特征分析 (ML/RL 准备)")
+    print("="*60)
+    
+    # 检查是否有扩展特征
+    extended_cols = ['atr', 'adx', 'rsi', 'boll_width', 'boll_position',
+                     'efficiency', 'false_breakout_rate', 'q_score',
+                     'regime_state', 'regime_type', 'sub_type',
+                     'trend_direction', 'volatility_state']
+    
+    available = [c for c in extended_cols if c in df.columns]
+    
+    if len(available) < 5:
+        print("\n⚠️ 特征数据不完整，建议重新运行 EA 生成完整特征")
+        return {}
+    
+    print(f"\n可用特征数: {len(available)}/{len(extended_cols)}")
+    
+    # 技术指标统计
+    print("\n技术指标统计:")
+    for col in ['atr', 'adx', 'rsi']:
+        if col in df.columns:
+            print(f"  {col:6s}: mean={df[col].mean():.2f}, std={df[col].std():.2f}, "
+                  f"min={df[col].min():.2f}, max={df[col].max():.2f}")
+    
+    # 市场质量统计
+    print("\n市场质量统计:")
+    for col in ['efficiency', 'false_breakout_rate', 'q_score']:
+        if col in df.columns:
+            print(f"  {col:20s}: mean={df[col].mean():.3f}, median={df[col].median():.3f}")
+    
+    # Regime 状态统计
+    if 'regime_state' in df.columns:
+        print("\nRegime 状态分布:")
+        state_map = {0: 'ACTIVE', 1: 'STANDBY', 2: 'TRANSITION'}
+        state_counts = df['regime_state'].value_counts().sort_index()
+        for state, count in state_counts.items():
+            pct = count / len(df) * 100
+            state_name = state_map.get(state, f'UNKNOWN({state})')
+            bar = "█" * int(pct / 2)
+            print(f"  {state_name:12s}: {count:6d} ({pct:5.1f}%) {bar}")
+    
+    # SubType 统计
+    if 'sub_type' in df.columns:
+        print("\nSubType 分布:")
+        subtype_names = {
+            0: 'T+V-B (真趋势)',
+            1: 'T+V-A (情绪脉冲)',
+            2: 'T+N (温和趋势)',
+            3: 'R+V-B (假突破密集)',
+            4: 'R+V-A (消息震荡)',
+            5: 'R+N (正常震荡)',
+            6: 'R+L (低波动震荡)',
+        }
+        subtype_counts = df['sub_type'].value_counts().sort_index()
+        for st, count in subtype_counts.items():
+            pct = count / len(df) * 100
+            name = subtype_names.get(st, f'UNKNOWN({st})')
+            print(f"  {st}: {name:18s}: {count:6d} ({pct:5.1f}%)")
+    
+    # 时段统计
+    if 'session' in df.columns:
+        print("\n交易时段分布:")
+        session_names = {0: 'Asia', 1: 'Europe', 2: 'US', 3: 'Overlap'}
+        session_counts = df['session'].value_counts().sort_index()
+        for sess, count in session_counts.items():
+            pct = count / len(df) * 100
+            name = session_names.get(sess, f'UNKNOWN({sess})')
+            bar = "█" * int(pct / 2)
+            print(f"  {name:10s}: {count:6d} ({pct:5.1f}%) {bar}")
+    
+    return {'available_features': len(available)}
 
 
 def analyze_regime_distribution(df: pd.DataFrame) -> Dict:
@@ -351,7 +433,7 @@ def main():
     args = parser.parse_args()
     
     print("\n" + "="*60)
-    print("📊 MT5 回测数据分析工具")
+    print("📊 MT5 回测数据分析工具 (v2.4.0+)")
     print("="*60)
     print(f"\n信号文件: {args.signals}")
     
@@ -367,6 +449,16 @@ def main():
     analyze_entry_conditions(df)
     analyze_entry_hours(df)
     analyze_qscore_distribution(df)
+    
+    # 如果提供了特征文件，分析扩展特征
+    if args.features:
+        print(f"\n特征文件: {args.features}")
+        try:
+            features_df = load_features(args.features)
+            print(f"加载特征记录数: {len(features_df)}")
+            analyze_features_distribution(features_df)
+        except Exception as e:
+            print(f"⚠️ 无法加载特征文件: {e}")
     
     # 诊断
     generate_diagnosis_report(df)

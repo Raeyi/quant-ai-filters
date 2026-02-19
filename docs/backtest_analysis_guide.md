@@ -1,4 +1,4 @@
-# MT5 回测数据分析指南
+# MT5 回测数据分析指南 (v2.4.0+)
 
 ## 快速开始
 
@@ -7,6 +7,7 @@
 ```bash
 cd Python
 python analyze_backtest.py --signals "C:\Users\ruiwe\AppData\Roaming\MetaQuotes\Terminal\Common\Files\signals_mt5.csv"
+python analyze_backtest.py --signals "signals.csv" --features "features.csv"  # 包含扩展特征分析
 ```
 
 ### 方法 2: PowerShell 快速分析
@@ -40,15 +41,47 @@ SUBTYPE: T+V-B / T+V-A / T+N / R+V-B / R+V-A / R+N / R+L
 Q-SCORE: 0.0 - 1.0
 ```
 
-### features.csv
+### features.csv (扩展格式 v2.4.0+)
 
-| 列名 | 说明 |
-|------|------|
-| time | 时间戳 |
-| close | 收盘价 |
-| boll_u | 布林带上轨 |
-| boll_l | 布林带下轨 |
-| atr | ATR 值 |
+features.csv 现在包含 **25+ 列**，专为 ML/RL 训练设计：
+
+| 类别 | 列名 | 说明 |
+|------|------|------|
+| **时间特征** | time | 时间戳 |
+| | hour | 小时 (0-23) |
+| | day_of_week | 星期几 (0=周日) |
+| | session | 交易时段 (0=Asia, 1=Europe, 2=US, 3=Overlap) |
+| **价格特征** | open, high, low, close | OHLC 价格 |
+| | price_change | 价格变化 (close - prev_close) |
+| | price_range | 价格范围 (high - low) |
+| **技术指标** | atr | ATR 值 |
+| | adx | ADX 趋势强度 |
+| | rsi | RSI 指标 |
+| | boll_upper, boll_lower, boll_mid | 布林带轨道 |
+| | boll_width | 布林带宽度 (归一化) |
+| | boll_position | 价格在布林带中的位置 (0-1) |
+| **市场质量** | efficiency | 市场效率 |
+| | false_breakout_rate | 假突破率 |
+| | q_score | 综合质量分数 |
+| **Regime 状态** | regime_state | 状态 (0=ACTIVE, 1=STANDBY, 2=TRANSITION) |
+| | regime_type | 市场类型 (0=RANGE, 1=TREND) |
+| | sub_type | SubType 编码 (0-6) |
+| | trend_direction | 趋势方向 (-1, 0, 1) |
+| | volatility_state | 波动率状态 (0=LOW, 1=NORMAL, 2=HIGH) |
+| **策略信号** | final_signal | 最终信号 (-1, 0, 1) |
+| | position_size | 仓位大小 |
+
+### SubType 编码对照表
+
+| 编码 | 代码 | 描述 | 特点 |
+|------|------|------|------|
+| 0 | T+V-B | 真趋势 (高质量) | 趋势强+高波动+好质量 |
+| 1 | T+V-A | 情绪脉冲 (高波动) | 趋势强+高波动+差质量 |
+| 2 | T+N | 温和趋势 | 趋势强+正常波动 |
+| 3 | R+V-B | 假突破密集 | 震荡+高波动+差质量 |
+| 4 | R+V-A | 消息震荡 | 震荡+高波动+好质量 |
+| 5 | R+N | 正常震荡 | 震荡+正常波动 |
+| 6 | R+L | 低波动震荡 | 震荡+低波动 |
 
 ---
 
@@ -97,6 +130,24 @@ $data | ForEach-Object {
 $entries | Group-Object source | Sort-Object Count -Descending
 ```
 
+### 5. 分析扩展特征 (ML/RL 准备)
+
+```python
+import pandas as pd
+
+# 加载特征数据
+df = pd.read_csv('features.csv', sep='\t')
+
+# 查看特征统计
+print(df.describe())
+
+# 查看 Regime 状态分布
+print(df['regime_state'].value_counts())
+
+# 查看技术指标相关性
+print(df[['atr', 'adx', 'rsi', 'q_score']].corr())
+```
+
 ---
 
 ## 诊断清单
@@ -108,6 +159,42 @@ $entries | Group-Object source | Sort-Object Count -Descending
 | ACTIVE 入场比例 | > 80% | 检查信号过滤逻辑 |
 | Q-Score 均值 | > 0.4 | 调整 Q-Score 参数 |
 | 入场时 Q-Score > 0.5 | > 50% | 提高入场阈值 |
+| 特征完整性 | 25+ 列 | 重新运行 EA 生成数据 |
+
+---
+
+## ML/RL 数据准备
+
+### 特征数据质量检查
+
+```python
+# 检查缺失值
+print(df.isnull().sum())
+
+# 检查特征分布
+import matplotlib.pyplot as plt
+df[['q_score', 'efficiency', 'rsi']].hist(bins=50, figsize=(12, 4))
+plt.show()
+
+# 检查类别平衡
+print(f"ACTIVE: {(df['regime_state'] == 0).sum()}")
+print(f"STANDBY: {(df['regime_state'] == 1).sum()}")
+```
+
+### 为 RL 训练准备数据
+
+```python
+# 创建状态空间
+state_cols = ['q_score', 'efficiency', 'adx', 'rsi', 'boll_position',
+              'regime_type', 'trend_direction', 'volatility_state']
+
+# 创建动作空间标签
+df['action'] = df['final_signal']  # -1, 0, 1
+
+# 计算奖励 (需要结合 signals_mt5.csv 的交易结果)
+# 简化版：使用下一根 K 线的价格变化
+df['reward'] = df['price_change'].shift(-1) * df['final_signal']
+```
 
 ---
 
@@ -137,6 +224,14 @@ $entries | Group-Object source | Sort-Object Count -Descending
 1. 优化 TrendPullback 策略参数
 2. 调整 SubType 分类逻辑
 
+### 问题 4: 特征数据不完整
+
+**原因**: 使用旧版 EA 或特征导出未正确配置
+
+**解决**:
+1. 确保使用 v2.4.0+ 版本
+2. 检查 features.csv 是否有 25+ 列
+
 ---
 
 ## 优化方向
@@ -144,3 +239,4 @@ $entries | Group-Object source | Sort-Object Count -Descending
 1. **参数优化**: 使用 Python `regime_param_optimize.py` 优化 Q-Score 参数
 2. **策略优化**: 根据信号来源分布，优化表现不佳的策略
 3. **时段优化**: 根据 M7 的时段权重，进一步调整交易时段
+4. **ML/RL 训练**: 使用扩展特征进行强化学习训练

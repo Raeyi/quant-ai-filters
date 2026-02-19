@@ -18,6 +18,7 @@
 // 指标
 #include "Indicators/Bollinger.mqh"
 #include "Indicators/ATR.mqh"
+#include "Indicators/RSI.mqh"
 
 // 核心结构
 #include "Core/Signal.mqh"
@@ -249,8 +250,21 @@ int OnInit()
                      FILE_WRITE | FILE_CSV | FILE_COMMON | FILE_SHARE_WRITE);
    if(g_file != INVALID_HANDLE)
    {
-      FileWrite(g_file, "time","close","boll_u","boll_l","atr");
-      Print("Feature file opened.");
+      // 扩展特征头（25+ 列，用于 ML/RL 训练）
+      FileWrite(g_file,
+         // 时间特征
+         "time","hour","day_of_week","session",
+         // 价格特征
+         "open","high","low","close","price_change","price_range",
+         // 技术指标
+         "atr","adx","rsi","boll_upper","boll_lower","boll_mid","boll_width","boll_position",
+         // 市场质量
+         "efficiency","false_breakout_rate","q_score",
+         // Regime 状态
+         "regime_state","regime_type","sub_type","trend_direction","volatility_state",
+         // 策略信号
+         "final_signal","position_size");
+      Print("Feature file opened with extended columns for ML/RL.");
    }
    else
    {
@@ -542,20 +556,102 @@ void OnTick()
       }
    }
 
-   // 5. 特征导出
+   // 5. 特征导出（扩展版，用于 ML/RL 训练）
    if(g_file != INVALID_HANDLE)
    {
-      double close  = iClose(_Symbol, _Period, 1);    // 上一根收盘价
-      double bu     = GetBollUpper(0);
-      double bl     = GetBollLower(0);
-      double atr1   = GetATR(1);
+      datetime bar_time = iTime(_Symbol, _Period, 1);
+      MqlDateTime dt;
+      TimeToStruct(bar_time, dt);
+      
+      // 时间特征
+      int hour = dt.hour;
+      int day_of_week = dt.day_of_week;  // 0=Sunday, 1=Monday, ...
+      int session = 0;  // 0=asia, 1=europe, 2=us, 3=overlap
+      if(hour >= 0 && hour < 8) session = 0;       // Asia
+      else if(hour >= 7 && hour < 16) session = 1; // Europe
+      else if(hour >= 13 && hour < 21) session = 2; // US
+      if((hour >= 7 && hour < 8) || (hour >= 13 && hour < 16)) session = 3; // Overlap
+      
+      // 价格特征
+      double open1   = iOpen(_Symbol, _Period, 1);
+      double high1   = iHigh(_Symbol, _Period, 1);
+      double low1    = iLow(_Symbol, _Period, 1);
+      double close1  = iClose(_Symbol, _Period, 1);
+      double close2  = iClose(_Symbol, _Period, 2);  // 前一根收盘价
+      double price_change = close1 - close2;
+      double price_range  = high1 - low1;
+      
+      // 技术指标
+      double atr1    = GetATR(1);
+      double bu      = GetBollUpper(0);
+      double bl      = GetBollLower(0);
+      double bm      = (bu + bl) / 2.0;
+      double boll_width = (bu - bl) / (bm + 0.0001);  // 避免除零
+      double boll_position = (close1 - bl) / (bu - bl + 0.0001);  // 0-1 范围
+      
+      // ADX 和 RSI
+      double adx = regime_filter.GetADX();
+      double rsi = GetRSI(1);  // 使用全局 RSI 函数
+      
+      // 获取快照（一次性获取所有状态）
+      RegimeSnapshot snap = regime_filter.GetSnapshot();
+      
+      // 市场质量
+      double efficiency = snap.efficiency;
+      double fbr = snap.false_breakout_rate;
+      double q_score = snap.q_score;
+      
+      // Regime 状态
+      int regime_state_int = (int)regime_state;  // 0=ACTIVE, 1=STANDBY, 2=TRANSITION
+      int regime_type = (int)snap.regime_type;  // 0=RANGE, 1=TREND
+      int sub_type = (int)snap.sub_type;  // 0-7
+      int trend_dir = (int)snap.trend_direction;  // -1, 0, 1
+      int vol_state = (int)snap.volatility_state;  // 0=LOW, 1=NORMAL, 2=HIGH
+      
+      // 策略信号
+      int final_sig = 0;
+      if(signal.type == SIGNAL_BUY) final_sig = 1;
+      else if(signal.type == SIGNAL_SELL) final_sig = -1;
+      
+      // 仓位大小（记录信号时的参考仓位）
+      double pos_size = 0.01;  // 默认最小仓位
 
       FileWrite(g_file,
-                TimeToString(iTime(_Symbol, _Period, 1), TIME_DATE|TIME_SECONDS),
-                DoubleToString(close,_Digits),
-                DoubleToString(bu,_Digits),
-                DoubleToString(bl,_Digits),
-                DoubleToString(atr1,_Digits));
+         // 时间特征
+         TimeToString(bar_time, TIME_DATE|TIME_SECONDS),
+         IntegerToString(hour),
+         IntegerToString(day_of_week),
+         IntegerToString(session),
+         // 价格特征
+         DoubleToString(open1, _Digits),
+         DoubleToString(high1, _Digits),
+         DoubleToString(low1, _Digits),
+         DoubleToString(close1, _Digits),
+         DoubleToString(price_change, _Digits),
+         DoubleToString(price_range, _Digits),
+         // 技术指标
+         DoubleToString(atr1, _Digits),
+         DoubleToString(adx, 2),
+         DoubleToString(rsi, 2),
+         DoubleToString(bu, _Digits),
+         DoubleToString(bl, _Digits),
+         DoubleToString(bm, _Digits),
+         DoubleToString(boll_width, 6),
+         DoubleToString(boll_position, 4),
+         // 市场质量
+         DoubleToString(efficiency, 4),
+         DoubleToString(fbr, 4),
+         DoubleToString(q_score, 4),
+         // Regime 状态
+         IntegerToString(regime_state_int),
+         IntegerToString(regime_type),
+         IntegerToString(sub_type),
+         IntegerToString(trend_dir),
+         IntegerToString(vol_state),
+         // 策略信号
+         IntegerToString(final_sig),
+         DoubleToString(pos_size, 2)
+      );
    }
 
    UpdateStatusPanel(); // 更新状态面板
