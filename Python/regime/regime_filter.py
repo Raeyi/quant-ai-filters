@@ -155,8 +155,9 @@ class RegimeFilter:
         # 计算 Regime 指标
         self._last_regime_df = self.regime_indicators.calculate(df)
         
-        # 计算市场质量
-        self._last_quality_df = self.market_quality.calculate(df, self._last_regime_df)
+        # 计算市场质量（只传递 adx 列）
+        adx_series = self._last_regime_df["adx"] if "adx" in self._last_regime_df.columns else None
+        self._last_quality_df = self.market_quality.calculate(df, adx_series)
         
         # 合并结果
         result = pd.DataFrame(index=df.index)

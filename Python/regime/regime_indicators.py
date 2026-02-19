@@ -127,8 +127,8 @@ class RegimeIndicators:
         up_move = high - high.shift(1)
         down_move = low.shift(1) - low
         
-        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+        plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0.0), index=df.index)
+        minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0.0), index=df.index)
         
         # True Range
         tr = pd.concat([
@@ -139,8 +139,8 @@ class RegimeIndicators:
         
         # 平滑
         atr = tr.ewm(alpha=1.0 / period, adjust=False).mean()
-        plus_di = 100.0 * pd.Series(plus_dm).ewm(alpha=1.0 / period, adjust=False).mean() / atr
-        minus_di = 100.0 * pd.Series(minus_dm).ewm(alpha=1.0 / period, adjust=False).mean() / atr
+        plus_di = 100.0 * plus_dm.ewm(alpha=1.0 / period, adjust=False).mean() / (atr + 1e-10)
+        minus_di = 100.0 * minus_dm.ewm(alpha=1.0 / period, adjust=False).mean() / (atr + 1e-10)
         
         # DX 和 ADX
         dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di + 1e-10)
@@ -150,7 +150,7 @@ class RegimeIndicators:
             "adx": adx,
             "plus_di": plus_di,
             "minus_di": minus_di
-        })
+        }, index=df.index)
     
     def _calculate_trend_strength(self, adx: pd.Series) -> pd.Series:
         """
