@@ -1,0 +1,86 @@
+;=====================================================================
+;           L2: BollMR 时间过滤优化
+;           前置：L1 最优参数已确定
+;           目标：优化交易时段
+;=====================================================================
+
+;--- 策略选择 ---
+StrategyVariant=enhanced
+
+;=====================================================================
+;                  【L2 优化参数 - 时间过滤】
+;=====================================================================
+;--- 交易时段 ---
+BollMR_Session=europe,us || europe || - || us,overlap
+BollMR_StartHour=2 || 0 || 1 || 8
+BollMR_EndHour=20 || 16 || 1 || 23
+
+;=====================================================================
+;                  【L1 固定参数 - 核心策略】
+;           >>> 请在 L1 优化后填入最优值 <<<
+;=====================================================================
+BollMR_BollPeriod=24,18
+BollMR_BollDev=1.75,1.5
+BollMR_ATRPeriod=12
+BollMR_StructATRSL=0.8
+BollMR_VolATRSL=1.5，1.0
+BollMR_ATRVolLimit=1.75
+BollMR_MidATRTP=0.4
+BollMR_MidATRTP2=0.5
+BollMR_Slope_Abs=125
+BollMR_UplowATRTP=0.25
+BollMR_MAPeriod=70
+
+;=====================================================================
+;                  【其他固定参数】
+;=====================================================================
+;--- RSI 固定 ---
+BollMR_RSIPeriod=14
+BollMR_RSIOverbought=70.0
+BollMR_RSIOversold=30.0
+
+;--- 时间其他 ---
+BollMR_TimeMode=session
+BollMR_ServerUTCOffset=2
+BollMR_UseDST=false
+BollMR_DSTShiftHours=1
+
+;--- RF 固定 ---
+RF_Q_Score_Standby=0.30
+Regime_ADX_Period=14
+Regime_ADX_Trend_Threshold=25.0
+Regime_DI_Threshold=3.0
+Regime_ATR_Period=14
+Regime_Vol_Lookback=100
+Regime_Vol_Low_Percentile=25.0
+Regime_Vol_High_Percentile=75.0
+
+;--- 风控固定 ---
+InpRiskPercent=1.0
+MaxHoldingBars=5
+CooldownSeconds=60
+MaxLosingStreak=3
+CooldownBarsAfter=5
+MAX_DAILY_LOSS_PERCENT=5.0
+
+;--- 其他 ---
+BollMR_ShortestClosingTime=10
+BollMR_PartialExit1=0.5
+BollMR_PartialExit2=0.25
+BollMR_MAPeriod=50
+BollMR_EntryMode=A
+BollMR_LogSignalDetails=true
+ApplyTemplateOnInit=true
+ApplyTemplateOnce=true
+ClearTemplateOnceOnRemove=true
+TemplateName=zz_bb_rsi.tpl
+ForceTimeframeOnInit=true
+TargetTimeframe=5
+AlertOnTimeframeChange=true
+DisableOnTimeframeChange=true
+ReloadOnTimeframeChange=false
+AutoRevertTimeframe=false
+AlertOnOrderOpen=true
+AlertOnOrderClose=true
+AlertOnOrderFail=true
+GapCooldownBars=5

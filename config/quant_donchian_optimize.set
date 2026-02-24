@@ -1,0 +1,86 @@
+;=====================================================================
+;           DonchianBreakout 网格优化配置文件
+;           包含：Donchian策略参数 + RF参数 + 风控参数
+;=====================================================================
+
+;--- 策略选择 ---
+StrategyVariant=donchian
+
+;=====================================================================
+;                        【风控设置】
+;=====================================================================
+;--- 仓位控制 ---
+InpRiskPercent=1.0 || 1 || 1 || 5
+
+;--- 持仓控制 ---
+MaxHoldingBars=5 || 0 || 5 || 30
+CooldownSeconds=60
+
+;--- 连亏保护 ---
+MaxLosingStreak=3 || 2 || 1 || 5
+CooldownBarsAfter=5 || 3 || 2 || 10
+
+;--- 日亏损限制 ---
+MAX_DAILY_LOSS_PERCENT=5.0 || 5.0 || 5.0 || 25
+
+;=====================================================================
+;                     【Regime Filter 设置】
+;=====================================================================
+RF_Q_Score_Standby=0.30 || 0.20 || 0.05 || 0.50
+
+;--- Regime 指标设置 ---
+Regime_ADX_Period=14 || 10 || 2 || 20
+Regime_ADX_Trend_Threshold=25.0 || 20.0 || 2.5 || 35.0
+Regime_DI_Threshold=3.0 || 2.0 || 1.0 || 8.0
+Regime_ATR_Period=14 || 10 || 2 || 20
+Regime_Vol_Lookback=100
+Regime_Vol_Low_Percentile=25.0 || 15.0 || 5.0 || 35.0
+Regime_Vol_High_Percentile=75.0 || 65.0 || 5.0 || 85.0
+
+;=====================================================================
+;                  【DonchianBreakout 策略参数】
+;=====================================================================
+;--- 通道参数 ---
+Donchian_Period=20 || 10 || 5 || 40
+Donchian_EMA_Fast=55 || 34 || 7 || 89
+Donchian_EMA_Slow=144 || 89 || 11 || 200
+
+;--- ATR 止损止盈 ---
+Donchian_ATR_Period=14 || 10 || 2 || 20
+Donchian_ATR_SL_Mult=1.5 || 1.0 || 0.25 || 3.0
+Donchian_ATR_TP_Mult=2.2 || 1.5 || 0.25 || 4.0
+Donchian_ATR_Avg_Period=30 || 20 || 5 || 50
+Donchian_ATR_Exp_Ratio=1.0 || 0.8 || 0.1 || 1.5
+
+;--- 时间过滤 ---
+; 美盘开始：北京时间 18:00-22:00
+Donchian_US_Start_Hour=20 || 18 || 1 || 22
+Donchian_US_Start_Min=30 || 0 || 15 || 45
+; 美盘结束：北京时间 23:00-04:00（跨日需用较小的结束值表示凌晨）
+; 23=23点, 0=凌晨0点, 1=凌晨1点, 2=凌晨2点, 3=凌晨3点, 4=凌晨4点
+Donchian_US_End_Hour=2 || 0 || 1 || 4
+Donchian_US_End_Min=30 || 0 || 15 || 45
+Donchian_Enable_Euro=false
+Donchian_Enable_Asian=false
+
+;--- 其他 ---
+Donchian_Enable_Trailing=true
+Donchian_LogSignalDetails=true
+
+;=====================================================================
+;                        【公用设置】(固定)
+;=====================================================================
+ApplyTemplateOnInit=true
+ApplyTemplateOnce=true
+ClearTemplateOnceOnRemove=true
+TemplateName=zz_bb_rsi.tpl
+ForceTimeframeOnInit=true
+TargetTimeframe=5
+AlertOnTimeframeChange=true
+DisableOnTimeframeChange=true
+ReloadOnTimeframeChange=false
+AutoRevertTimeframe=false
+AlertOnOrderOpen=true
+AlertOnOrderClose=true
+AlertOnOrderFail=true
+GapCooldownBars=5

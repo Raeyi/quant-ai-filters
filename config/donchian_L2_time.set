@@ -1,0 +1,73 @@
+;=====================================================================
+;           L2: Donchian 时间过滤优化
+;           前置：L1 最优参数已确定
+;           目标：找到最优交易时段
+;=====================================================================
+
+;--- 策略选择 ---
+StrategyVariant=donchian
+
+;=====================================================================
+;                  【L2 优化参数 - 时间过滤】
+;=====================================================================
+;--- 美盘时段（北京时间，支持跨日）---
+; 开始时间：18:00-22:00
+Donchian_US_Start_Hour=20 || 18 || 1 || 22
+Donchian_US_Start_Min=30 || 0 || 30 || 30
+; 结束时间：凌晨 0:00-4:00
+Donchian_US_End_Hour=2 || 0 || 1 || 4
+Donchian_US_End_Min=0 || 0 || 30 || 30
+
+;=====================================================================
+;                  【L1 固定参数 - 核心策略】
+;           >>> 请在 L1 优化后填入最优值 <<<
+;=====================================================================
+Donchian_Period=20
+Donchian_EMA_Fast=55
+Donchian_EMA_Slow=144
+Donchian_ATR_Period=14
+Donchian_ATR_SL_Mult=1.5
+Donchian_ATR_TP_Mult=2.2
+Donchian_ATR_Avg_Period=30
+Donchian_ATR_Exp_Ratio=1.0
+Donchian_Enable_Trailing=true
+
+;=====================================================================
+;                  【其他固定参数】
+;=====================================================================
+;--- RF 固定 ---
+RF_Q_Score_Standby=0.30
+Regime_ADX_Period=14
+Regime_ADX_Trend_Threshold=25.0
+Regime_DI_Threshold=3.0
+Regime_ATR_Period=14
+Regime_Vol_Lookback=100
+Regime_Vol_Low_Percentile=25.0
+Regime_Vol_High_Percentile=75.0
+
+;--- 风控固定 ---
+InpRiskPercent=1.0
+MaxHoldingBars=0
+CooldownSeconds=60
+MaxLosingStreak=3
+CooldownBarsAfter=5
+MAX_DAILY_LOSS_PERCENT=5.0
+
+;--- 其他 ---
+Donchian_Enable_Euro=false
+Donchian_Enable_Asian=false
+Donchian_LogSignalDetails=true
+ApplyTemplateOnInit=true
+ApplyTemplateOnce=true
+ClearTemplateOnceOnRemove=true
+TemplateName=zz_bb_rsi.tpl
+ForceTimeframeOnInit=true
+TargetTimeframe=5
+AlertOnTimeframeChange=true
+DisableOnTimeframeChange=true
+ReloadOnTimeframeChange=false
+AutoRevertTimeframe=false
+AlertOnOrderOpen=true
+AlertOnOrderClose=true
+AlertOnOrderFail=true
+GapCooldownBars=5

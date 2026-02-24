@@ -1,0 +1,69 @@
+;=====================================================================
+;           L1: Donchian 策略核心参数优化
+;           目标：找到最优的通道周期、EMA、止损止盈参数
+;=====================================================================
+
+;--- 策略选择 ---
+StrategyVariant=donchian
+
+;=====================================================================
+;                  【L1 优化参数 - 策略核心】
+;=====================================================================
+;--- 通道参数 ---
+Donchian_Period=20 || 10 || 5 || 40
+Donchian_EMA_Fast=55 || 34 || 7 || 89
+Donchian_EMA_Slow=144 || 89 || 11 || 200
+
+;--- ATR 止损止盈 ---
+Donchian_ATR_Period=14
+Donchian_ATR_SL_Mult=1.5 || 1.0 || 0.25 || 3.0
+Donchian_ATR_TP_Mult=2.2 || 1.5 || 0.25 || 4.0
+Donchian_ATR_Avg_Period=30 || 20 || 5 || 50
+Donchian_ATR_Exp_Ratio=1.0 || 0.8 || 0.1 || 1.5
+
+;=====================================================================
+;                  【固定参数】
+;=====================================================================
+;--- 时间过滤（固定：美盘 20:30-02:00）---
+Donchian_US_Start_Hour=20
+Donchian_US_Start_Min=30
+Donchian_US_End_Hour=2
+Donchian_US_End_Min=0
+Donchian_Enable_Euro=false
+Donchian_Enable_Asian=false
+
+;--- RF 固定 ---
+RF_Q_Score_Standby=0.30
+Regime_ADX_Period=14
+Regime_ADX_Trend_Threshold=25.0
+Regime_DI_Threshold=3.0
+Regime_ATR_Period=14
+Regime_Vol_Lookback=100
+Regime_Vol_Low_Percentile=25.0
+Regime_Vol_High_Percentile=75.0
+
+;--- 风控固定 ---
+InpRiskPercent=1.0
+MaxHoldingBars=0
+CooldownSeconds=60
+MaxLosingStreak=3
+CooldownBarsAfter=5
+MAX_DAILY_LOSS_PERCENT=5.0
+
+;--- 其他固定 ---
+Donchian_Enable_Trailing=true
+Donchian_LogSignalDetails=true
+ApplyTemplateOnInit=true
+ApplyTemplateOnce=true
+ClearTemplateOnceOnRemove=true
+TemplateName=zz_bb_rsi.tpl
+ForceTimeframeOnInit=true
+TargetTimeframe=5
+AlertOnTimeframeChange=true
+DisableOnTimeframeChange=true
+ReloadOnTimeframeChange=false
+AutoRevertTimeframe=false
+AlertOnOrderOpen=true
+AlertOnOrderClose=true
+AlertOnOrderFail=true
+GapCooldownBars=5

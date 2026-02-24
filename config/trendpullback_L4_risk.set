@@ -1,0 +1,106 @@
+;=====================================================================
+;           L4: TrendPullback 风控参数优化
+;           前置：L1、L2、L3 最优参数已确定
+;           目标：优化资金管理参数
+;=====================================================================
+
+;--- 策略选择 ---
+StrategyVariant=trend_pullback
+
+;=====================================================================
+;                  【L4 优化参数 - 风控】
+;=====================================================================
+;--- 仓位控制 ---
+InpRiskPercent=1.0 || 1 || 1 || 5
+
+;--- 连亏保护 ---
+MaxLosingStreak=3 || 2 || 1 || 5
+CooldownBarsAfter=5 || 3 || 2 || 10
+
+;--- 日亏损限制 ---
+MAX_DAILY_LOSS_PERCENT=5.0 || 5.0 || 5.0 || 25
+
+;--- 加仓策略（可选优化）---
+TP_EnableAddPosition=true
+TP_Add1_Ratio=0.4 || 0.3 || 0.1 || 0.5
+TP_Add2_Ratio=0.25 || 0.15 || 0.05 || 0.35
+TP_MaxTotalRisk=2.5 || 1.5 || 0.5 || 4.0
+
+;=====================================================================
+;                  【L1+L2+L3 固定参数】
+;           >>> 请在 L1、L2、L3 优化后填入最优值 <<<
+;=====================================================================
+;--- L1 核心策略 ---
+TP_EMA50_Period=50
+TP_EMA200_Period=200
+TP_EMA20_Period=20
+TP_ValueZoneATR=0.5
+TP_PullbackDepthATR=0.5
+TP_PullbackBars=5
+TP_Structure_Lookback=20
+TP_ATR_Period=14
+TP_ATR_SL_Multi=1.5
+TP_TrailATR_Multi=2.5
+TP_BE_OffsetATR=-0.2
+TP_PartialExit1_ATR=1.5
+TP_PartialExit1_Ratio=0.35
+TP_HTF=15
+TP_LTF=5
+TP_UseVWAP_HTF=true
+TP_UseVWAP_LTF=true
+TP_RequireBreak=true
+TP_EnableTrailing=true
+
+;--- L2 时间过滤 ---
+TP_Session=europe,us,overlap
+TP_TimeFilterEntry=true
+TP_TimeExitEndSession=true
+
+;--- L3 RF 过滤 ---
+RF_Q_Score_Standby=0.30
+Regime_ADX_Period=14
+Regime_ADX_Trend_Threshold=25.0
+Regime_DI_Threshold=3.0
+Regime_ATR_Period=14
+Regime_Vol_Lookback=100
+Regime_Vol_Low_Percentile=25.0
+Regime_Vol_High_Percentile=75.0
+MQ_Weight_Eff=0.25
+MQ_Weight_FBR=0.25
+MQ_Weight_ADX=0.20
+MQ_Efficiency_Baseline=0.10
+MQ_FBR_Baseline=0.40
+MQ_ADX_Baseline=25.0
+
+;=====================================================================
+;                  【其他固定参数】
+;=====================================================================
+;--- 冷却机制 ---
+TP_EnableCooldown=true
+TP_CooldownBars=3
+TP_MaxCooldownBars=12
+TP_FastFailBars=5
+TP_MinMomentumATR=0.5
+TP_StructureUpgradeATR=0.5
+TP_Add2_ProfitATR=2.0
+
+;--- 持仓控制 ---
+MaxHoldingBars=0
+CooldownSeconds=60
+
+;--- 其他 ---
+TP_LogSignalDetails=true
+ApplyTemplateOnInit=true
+ApplyTemplateOnce=true
+ClearTemplateOnceOnRemove=true
+TemplateName=zz_bb_rsi.tpl
+ForceTimeframeOnInit=true
+TargetTimeframe=5
+AlertOnTimeframeChange=true
+DisableOnTimeframeChange=true
+ReloadOnTimeframeChange=false
+AutoRevertTimeframe=false
+AlertOnOrderOpen=true
+AlertOnOrderClose=true
+AlertOnOrderFail=true
+GapCooldownBars=5

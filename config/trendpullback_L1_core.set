@@ -1,0 +1,109 @@
+;=====================================================================
+;           L1: TrendPullback 策略核心参数优化
+;           目标：优化 EMA 周期、止损止盈、结构参数
+;=====================================================================
+
+;--- 策略选择 ---
+StrategyVariant=trend_pullback
+
+;=====================================================================
+;                  【L1 优化参数 - 策略核心】
+;=====================================================================
+;--- 高时间框架 EMA ---
+TP_EMA50_Period=50 || 34 || 8 || 89
+TP_EMA200_Period=200 || 144 || 14 || 233
+
+;--- 低时间框架 EMA ---
+TP_EMA20_Period=20 || 13 || 3 || 34
+
+;--- 价值区与回撤 ---
+TP_ValueZoneATR=0.5 || 0.3 || 0.1 || 0.8
+TP_PullbackDepthATR=0.5 || 0.3 || 0.1 || 0.8
+TP_PullbackBars=5 || 3 || 1 || 8
+
+;--- 结构分析 ---
+TP_Structure_Lookback=20 || 10 || 5 || 30
+
+;--- 止损止盈 ---
+TP_ATR_Period=14 || 10 || 2 || 20
+TP_ATR_SL_Multi=1.5 || 1.0 || 0.25 || 2.5
+TP_TrailATR_Multi=2.5 || 1.5 || 0.25 || 4.0
+TP_BE_OffsetATR=-0.2 || -0.5 || 0.1 || 0.2
+
+;--- 部分平仓 ---
+TP_PartialExit1_ATR=1.5 || 1.0 || 0.25 || 2.5
+TP_PartialExit1_Ratio=0.35 || 0.20 || 0.05 || 0.50
+
+;=====================================================================
+;                  【固定参数】
+;=====================================================================
+;--- 高低时间框架固定 ---
+TP_HTF=15
+TP_LTF=5
+TP_UseVWAP_HTF=true
+TP_UseVWAP_LTF=true
+
+;--- 时间过滤固定 ---
+TP_Session=europe,us,overlap
+TP_TimeFilterEntry=true
+TP_TimeExitEndSession=true
+
+;--- 冷却机制固定 ---
+TP_EnableCooldown=true
+TP_CooldownBars=3
+TP_MaxCooldownBars=12
+TP_FastFailBars=5
+TP_MinMomentumATR=0.5
+TP_StructureUpgradeATR=0.5
+
+;--- 加仓策略固定 ---
+TP_EnableAddPosition=true
+TP_Add1_Ratio=0.4
+TP_Add2_Ratio=0.25
+TP_Add2_ProfitATR=2.0
+TP_MaxTotalRisk=2.5
+
+;--- RF 固定 ---
+RF_Q_Score_Standby=0.30
+Regime_ADX_Period=14
+Regime_ADX_Trend_Threshold=25.0
+Regime_DI_Threshold=3.0
+Regime_ATR_Period=14
+Regime_Vol_Lookback=100
+Regime_Vol_Low_Percentile=25.0
+Regime_Vol_High_Percentile=75.0
+
+;--- 市场质量固定 ---
+MQ_Weight_Eff=0.25
+MQ_Weight_FBR=0.25
+MQ_Weight_ADX=0.20
+MQ_Efficiency_Baseline=0.10
+MQ_FBR_Baseline=0.40
+MQ_ADX_Baseline=25.0
+
+;--- 风控固定 ---
+InpRiskPercent=1.0
+MaxHoldingBars=0
+CooldownSeconds=60
+MaxLosingStreak=3
+CooldownBarsAfter=5
+MAX_DAILY_LOSS_PERCENT=5.0
+
+;--- 其他固定 ---
+TP_RequireBreak=true
+TP_EnableTrailing=true
+TP_LogSignalDetails=true
+ApplyTemplateOnInit=true
+ApplyTemplateOnce=true
+ClearTemplateOnceOnRemove=true
+TemplateName=zz_bb_rsi.tpl
+ForceTimeframeOnInit=true
+TargetTimeframe=5
+AlertOnTimeframeChange=true
+DisableOnTimeframeChange=true
+ReloadOnTimeframeChange=false
+AutoRevertTimeframe=false
+AlertOnOrderOpen=true
+AlertOnOrderClose=true
+AlertOnOrderFail=true
+GapCooldownBars=5

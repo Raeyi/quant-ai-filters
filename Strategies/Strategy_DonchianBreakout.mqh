@@ -151,7 +151,7 @@ public:
     
 private:
     //+------------------------------------------------------------------
-    // 时间过滤：美盘时段（北京时间 20:30-23:30）
+    // 时间过滤：美盘时段（北京时间，支持跨日）
     //+------------------------------------------------------------------
     bool TimeFilterOK()
     {
@@ -168,13 +168,25 @@ private:
         // 北京时间 = UTC+8 = 服务器时间 + 6
         int beijing_hour = (hour + 6) % 24;
         
-        // 美盘时段检查（20:30 - 23:30 北京时间）
+        // 美盘时段检查（支持跨日）
         int time_value = beijing_hour * 100 + min;
         int start_time = Donchian_US_Start_Hour * 100 + Donchian_US_Start_Min;
         int end_time = Donchian_US_End_Hour * 100 + Donchian_US_End_Min;
         
-        // 美盘模式
-        if(time_value >= start_time && time_value <= end_time)
+        // 美盘模式（支持跨日，如 20:30 - 02:00）
+        bool in_range;
+        if(start_time <= end_time)
+        {
+            // 同一天内：如 15:00 - 20:00
+            in_range = (time_value >= start_time && time_value <= end_time);
+        }
+        else
+        {
+            // 跨日：如 20:30 - 02:00
+            in_range = (time_value >= start_time || time_value <= end_time);
+        }
+        
+        if(in_range)
             return true;
         
         // 欧盘模式（可选）
