@@ -127,9 +127,41 @@ public:
     }
 
 public:
+    // 检查 Sub-Type 是否适合布林带回归策略
+    // 适合：RN_NORMAL(正常震荡), RL_LOW(低波动), TN_MILD(温和趋势)
+    // 不适合：TVB_TREND(强趋势), TVA_EMOTION(情绪脉冲), RVB_FALSE(假突破), RVA_NEWS(消息震荡)
+    bool IsSubTypeSuitable()
+    {
+        if(m_regime_filter == NULL)
+            return true;  // 无 RF 时允许通过
+        
+        RegimeSubType sub_type = m_regime_filter.GetSubType();
+        
+        switch(sub_type)
+        {
+            case SUBTYPE_RN_NORMAL:    // 正常震荡 - 最佳
+            case SUBTYPE_RL_LOW:       // 低波动 - 可以
+            case SUBTYPE_TN_MILD:      // 温和趋势 - 可以
+                return true;
+            
+            case SUBTYPE_TVB_TREND:    // 强趋势 - 容易逆势
+            case SUBTYPE_TVA_EMOTION:  // 情绪脉冲 - 波动剧烈
+            case SUBTYPE_RVB_FALSE:    // 假突破密集 - 信号不可靠
+            case SUBTYPE_RVA_NEWS:     // 消息震荡 - 风险太高
+                return false;
+            
+            default:
+                return true;  // 未知类型允许通过
+        }
+    }
+    
     bool LongSignal(string mode)
     {   
         if(!TimeFilterOK())
+            return false;
+        
+        // Sub-Type 过滤
+        if(!IsSubTypeSuitable())
             return false;
 
         if(mode == "A") // 严格确认回归（基准版）
@@ -204,6 +236,10 @@ public:
     bool ShortSignal(string mode)
     {
         if(!TimeFilterOK())
+            return false;
+        
+        // Sub-Type 过滤
+        if(!IsSubTypeSuitable())
             return false;
 
         if(mode == "A") // 严格确认回归（基准版）

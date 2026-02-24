@@ -654,11 +654,45 @@ public:
     }
     
     //+--------------------------------------------------------------
+    //| 检查 Sub-Type 是否适合趋势回撤策略
+    //| 适合：TVB_TREND(强趋势), TN_MILD(温和趋势)
+    //| 不适合：RN_NORMAL/RL_LOW(震荡), RVA_NEWS(消息), RVB_FALSE(假突破), TVA_EMOTION(情绪)
+    //+--------------------------------------------------------------
+    bool IsSubTypeSuitable()
+    {
+        if(m_regime_filter == NULL)
+            return true;  // 无 RF 时允许通过
+        
+        RegimeSubType sub_type = m_regime_filter.GetSubType();
+        
+        switch(sub_type)
+        {
+            case SUBTYPE_TVB_TREND:    // 强趋势 - 最佳
+            case SUBTYPE_TN_MILD:      // 温和趋势 - 可以
+                return true;
+            
+            case SUBTYPE_RN_NORMAL:    // 正常震荡 - 无趋势
+            case SUBTYPE_RL_LOW:       // 低波动 - 无趋势
+            case SUBTYPE_RVA_NEWS:     // 消息震荡 - 不稳定
+            case SUBTYPE_RVB_FALSE:    // 假突破密集 - 假突破多
+            case SUBTYPE_TVA_EMOTION:  // 情绪脉冲 - 不稳定
+                return false;
+            
+            default:
+                return true;  // 未知类型允许通过
+        }
+    }
+    
+    //+--------------------------------------------------------------
     //| 多头入场信号 (v3.1 带调试统计)
     //+--------------------------------------------------------------
     bool LongSignal()
     {
         m_stat_total_checks++;
+
+        // 0.0 Sub-Type 过滤（趋势策略只在趋势类 Sub-Type 下交易）
+        if(!IsSubTypeSuitable())
+            return false;
 
         // 0.1 时间过滤
         if(TP_TimeFilterEntry && !TimeFilter_CheckSession(TP_Session, BollMR_UseDST, BollMR_DSTShiftHours))
@@ -741,6 +775,10 @@ public:
     bool ShortSignal()
     {
         m_stat_total_checks++;
+
+        // 0.0 Sub-Type 过滤（趋势策略只在趋势类 Sub-Type 下交易）
+        if(!IsSubTypeSuitable())
+            return false;
 
         // 0.1 时间过滤
         if(TP_TimeFilterEntry && !TimeFilter_CheckSession(TP_Session, BollMR_UseDST, BollMR_DSTShiftHours))
