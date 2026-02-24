@@ -169,6 +169,10 @@ input double TP_Add2_Ratio       = 0.25;         // 第二次加仓比例 (%)
 input double TP_Add2_ProfitATR   = 2.0;          // 第二次加仓盈利要求 (ATR倍数)
 input double TP_MaxTotalRisk     = 2.5;          // 最大总风险 (R倍数)
 
+//--- 日志 ---
+input group "TP.日志"
+input bool   TP_LogSignalDetails = true;         // 详细日志
+
 
 //+--------------------------------------------------------------------
 //|                     【DonchianBreakout 策略参数】

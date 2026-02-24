@@ -1185,20 +1185,18 @@ public:
         {
             if(longSig)
             {
+                LogSignalDetails("BUY");
                 FillSignal(signal, SIGNAL_BUY);
-                Print("[", Name(), "] Long signal. trend=", EnumToString(trend),
-                      " price=", signal.price, " sl=", signal.sl, " tp=", signal.tp,
-                      " ema20=", DoubleToString(m_buf_ema20_ltf[1], _Digits),
-                      " vwap=", DoubleToString(m_vwap_ltf, _Digits));
+                Print("[", Name(), "] Long signal filled. price=", signal.price,
+                      " sl=", signal.sl, " tp=", signal.tp);
                 return signal;
             }
             if(shortSig)
             {
+                LogSignalDetails("SELL");
                 FillSignal(signal, SIGNAL_SELL);
-                Print("[", Name(), "] Short signal. trend=", EnumToString(trend),
-                      " price=", signal.price, " sl=", signal.sl, " tp=", signal.tp,
-                      " ema20=", DoubleToString(m_buf_ema20_ltf[1], _Digits),
-                      " vwap=", DoubleToString(m_vwap_ltf, _Digits));
+                Print("[", Name(), "] Short signal filled. price=", signal.price,
+                      " sl=", signal.sl, " tp=", signal.tp);
                 return signal;
             }
         }
@@ -1392,6 +1390,35 @@ public:
     string Name() override
     {
         return "TrendPullback";
+    }
+
+    //+--------------------------------------------------------------
+    //| 日志输出
+    //+--------------------------------------------------------------
+    void LogSignalDetails(const string direction)
+    {
+        if(!TP_LogSignalDetails)
+            return;
+        
+        MqlDateTime ts;
+        TimeToStruct(TimeCurrent(), ts);
+        
+        double atr = (ArraySize(m_buf_atr) >= 2) ? m_buf_atr[1] : 0.0;
+        double ema20 = (ArraySize(m_buf_ema20_ltf) >= 2) ? m_buf_ema20_ltf[1] : 0.0;
+        TrendDirection trend = GetTrendState();
+        
+        Print("[TrendPullback] Signal ", direction,
+              " time=", TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
+              " trend=", EnumToString(trend),
+              " price=", DoubleToString(SymbolInfoDouble(_Symbol, SYMBOL_BID), _Digits),
+              " atr=", DoubleToString(atr, _Digits),
+              " ema20=", DoubleToString(ema20, _Digits),
+              " vwap=", DoubleToString(m_vwap_ltf, _Digits),
+              " swing_high=", DoubleToString(m_swing_high, _Digits),
+              " swing_low=", DoubleToString(m_swing_low, _Digits),
+              " pullback_lh=", DoubleToString(m_pullback_lh, _Digits),
+              " pullback_hl=", DoubleToString(m_pullback_hl, _Digits),
+              " hour=", ts.hour);
     }
 };
 
