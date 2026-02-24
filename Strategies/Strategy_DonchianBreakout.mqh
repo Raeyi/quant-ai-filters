@@ -15,31 +15,6 @@
 #include "../Core/Inputs_All.mqh"
 
 //+------------------------------------------------------------------+
-//| 策略输入参数（需要在 Inputs_All.mqh 中定义）                        |
-//+------------------------------------------------------------------+
-// M9: Donchian 突破策略参数
-input int    Donchian_Period = 20;           // Donchian 通道周期
-input int    Donchian_EMA_Fast = 55;         // 快速 EMA 周期
-input int    Donchian_EMA_Slow = 144;        // 慢速 EMA 周期
-input int    Donchian_ATR_Period = 14;       // ATR 周期
-input double Donchian_ATR_SL_Mult = 1.5;     // 止损 ATR 倍数
-input double Donchian_ATR_TP_Mult = 2.2;     // 止盈 ATR 倍数
-input int    Donchian_ATR_Avg_Period = 30;   // ATR 均值周期（波动扩张判断）
-input double Donchian_ATR_Exp_Ratio = 1.0;   // ATR 扩张比例阈值
-input bool   Donchian_Enable_Trailing = true;// 启用 Donchian 拖尾止损
-input bool   Donchian_LogSignalDetails = true;// 详细日志
-
-// 美盘时段参数（北京时间）
-input int    Donchian_US_Start_Hour = 20;    // 美盘开始小时
-input int    Donchian_US_Start_Min = 30;     // 美盘开始分钟
-input int    Donchian_US_End_Hour = 23;      // 美盘结束小时
-input int    Donchian_US_End_Min = 30;       // 美盘结束分钟
-
-// 多时段模式开关
-input bool   Donchian_Enable_Euro = false;   // 启用欧盘观察模式
-input bool   Donchian_Enable_Asian = false;  // 启用亚盘试错模式
-
-//+------------------------------------------------------------------+
 //| 策略类定义                                                         |
 //+------------------------------------------------------------------+
 class Strategy_DonchianBreakout : public IStrategy

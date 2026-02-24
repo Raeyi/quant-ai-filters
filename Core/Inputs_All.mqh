@@ -170,4 +170,38 @@ input double TP_Add2_ProfitATR   = 2.0;          // 第二次加仓盈利要求 
 input double TP_MaxTotalRisk     = 2.5;          // 最大总风险 (R倍数)
 
 
+//+--------------------------------------------------------------------
+//|                     【DonchianBreakout 策略参数】
+//+--------------------------------------------------------------------
+input group "========== DonchianBreakout 策略 =========="
+
+//--- 通道参数 ---
+input group "Donchian.通道"
+input int    Donchian_Period = 20;               // Donchian 通道周期
+input int    Donchian_EMA_Fast = 55;             // 快速 EMA 周期
+input int    Donchian_EMA_Slow = 144;            // 慢速 EMA 周期
+
+//--- ATR 止损止盈 ---
+input group "Donchian.ATR止损止盈"
+input int    Donchian_ATR_Period = 14;           // ATR 周期
+input double Donchian_ATR_SL_Mult = 1.5;         // 止损 ATR 倍数
+input double Donchian_ATR_TP_Mult = 2.2;         // 止盈 ATR 倍数
+input int    Donchian_ATR_Avg_Period = 30;       // ATR 均值周期（波动扩张判断）
+input double Donchian_ATR_Exp_Ratio = 1.0;       // ATR 扩张比例阈值
+
+//--- 时间过滤 ---
+input group "Donchian.时间过滤"
+input int    Donchian_US_Start_Hour = 20;        // 美盘开始小时 (北京时间)
+input int    Donchian_US_Start_Min = 30;         // 美盘开始分钟
+input int    Donchian_US_End_Hour = 23;          // 美盘结束小时 (北京时间)
+input int    Donchian_US_End_Min = 30;           // 美盘结束分钟
+input bool   Donchian_Enable_Euro = false;       // 启用欧盘观察模式
+input bool   Donchian_Enable_Asian = false;      // 启用亚盘试错模式
+
+//--- 其他 ---
+input group "Donchian.其他"
+input bool   Donchian_Enable_Trailing = true;    // 启用 Donchian 拖尾止损
+input bool   Donchian_LogSignalDetails = true;   // 详细日志
+
+
 #endif // __INPUTS_ALL_MQH__
