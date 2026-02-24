@@ -13,6 +13,7 @@
 input group "========== Regime 指标设置 =========="
 input int     Regime_ADX_Period = 14;            // ADX 周期
 input double  Regime_ADX_Trend_Threshold = 25.0; // ADX 趋势阈值
+input double  Regime_DI_Threshold = 3.0;         // DI差值趋势阈值 (原5.0)
 input int     Regime_ATR_Period = 14;            // ATR 周期
 input int     Regime_Vol_Lookback = 100;         // 波动率百分位窗口
 input double  Regime_Vol_Low_Percentile = 25.0;  // 低波动百分位
@@ -159,9 +160,9 @@ public:
         
         // 计算趋势方向
         double di_diff = m_plus_di_buffer[0] - m_minus_di_buffer[0];
-        if(di_diff > 5)
+        if(di_diff > Regime_DI_Threshold)
             m_trend_direction = TREND_BULL;
-        else if(di_diff < -5)
+        else if(di_diff < -Regime_DI_Threshold)
             m_trend_direction = TREND_BEAR;
         else
             m_trend_direction = TREND_NONE;
