@@ -34,6 +34,7 @@
 #include "Strategies/Strategy_BollMR_Time.mqh"
 #include "Strategies/Strategy_BollMR_RSI_Time.mqh"
 #include "Strategies/Strategy_TrendPullback.mqh"
+#include "Strategies/Strategy_DonchianBreakout.mqh"
 #include "Strategies/Strategy_Combo.mqh"
 
 // 执行 & 风控
@@ -64,8 +65,9 @@ Strategy_BollMR_Base boll_base;    // Bollinger 均值回归策略（基线版�
 Strategy_BollMR_RSI  boll_rsi;     // Bollinger 均值回归策略（RSI 过滤）
 Strategy_BollMR_Time boll_time;    // Bollinger 均值回归策略（时间过滤）
 Strategy_BollMR_RSI_Time boll_rsi_time; // Bollinger 均值回归策略（RSI + 时间过滤）
-Strategy_TrendPullback trend_pullback; // 趋势回撤策略 (M2)
-Strategy_Combo combo;                  // 组合策略 (M1+M2)
+Strategy_TrendPullback trend_pullback; // 趋势回撤策略 (M4)
+Strategy_DonchianBreakout donchian_breakout; // Donchian 突破策略 (M9)
+Strategy_Combo combo;                  // 组合策略
 
 TradeExecutor       executor; // 交易执行器
 RiskPipeline        risk_pipeline; // 风控管道
@@ -140,6 +142,24 @@ int OnInit()
 {
    Print("EA Init start");
 
+   // 调试：打印品种和账户信息
+   {
+      string acc_currency = AccountInfoString(ACCOUNT_CURRENCY);
+      double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+      double tick_val = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double tick_sz = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      double contract = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE);
+      string profit_currency = SymbolInfoString(_Symbol, SYMBOL_CURRENCY_PROFIT);
+      bool is_cent = (StringFind(acc_currency, "CENT") >= 0);
+      
+      Print("[DEBUG] Account: currency=", acc_currency, " equity=", equity, " is_cent=", is_cent);
+      Print("[DEBUG] Symbol: ", _Symbol, 
+            " tick_val=", tick_val, 
+            " tick_sz=", tick_sz, 
+            " contract=", contract,
+            " profit_currency=", profit_currency);
+   }
+
    // 目标周期强制切换
    if(ForceTimeframeOnInit && _Period != TargetTimeframe)
    {
@@ -163,13 +183,22 @@ int OnInit()
 
       if(should_apply)
       {
+         // 先设置全局变量，因为 ChartApplyTemplate 可能触发 EA 重新加载
+         if(ApplyTemplateOnce && g_template_key != "")
+            GlobalVariableSet(g_template_key, TimeCurrent());
+         
          if(!ChartApplyTemplate(0, TemplateName))
+         {
             Print("Failed to apply template: ", TemplateName, " err=", GetLastError());
+            // 失败时删除标记，下次重试
+            if(ApplyTemplateOnce && g_template_key != "")
+               GlobalVariableDel(g_template_key);
+         }
          else
          {
             Print("Template applied: ", TemplateName);
-            if(ApplyTemplateOnce && g_template_key != "")
-               GlobalVariableSet(g_template_key, TimeCurrent());
+            // 模板应用成功，继续初始化
+            // 注意：如果模板触发了 EA 重新加载，后续代码会在新实例中执行
          }
       }
       else
@@ -188,10 +217,12 @@ int OnInit()
    registry.Register("time", &boll_time);
    registry.Register("rsi_time", &boll_rsi_time);
    registry.Register("trend_pullback", &trend_pullback);
+   registry.Register("donchian", &donchian_breakout);
    
    // 注册组合策略的子策略（标记为 combo_child）
    registry.Register("boll_enhanced_child", &boll_enhanced, true);
    registry.Register("trend_pullback_child", &trend_pullback, true);
+   registry.Register("donchian_child", &donchian_breakout, true);
    
    // 2. 选择策略变体
    g_boll_variant = BollMRVariant;
@@ -202,6 +233,7 @@ int OnInit()
    {
       combo.AddStrategy(&boll_enhanced, "BollMR_enhanced");
       combo.AddStrategy(&trend_pullback, "TrendPullback");
+      combo.AddStrategy(&donchian_breakout, "DonchianBreakout");
       registry.RegisterCombo(&combo, "combo");
    }
    
@@ -246,6 +278,18 @@ int OnInit()
    UpdateStatusPanel();
 
    // 6. 如果需要导出特征，就打开文件
+   // 先关闭旧句柄（防止时间框架切换时重复打开）
+   if(g_file != INVALID_HANDLE) 
+   {
+      FileClose(g_file);
+      g_file = INVALID_HANDLE;
+   }
+   if(g_signal_file != INVALID_HANDLE)
+   {
+      FileClose(g_signal_file);
+      g_signal_file = INVALID_HANDLE;
+   }
+   
    g_file = FileOpen("features.csv",
                      FILE_WRITE | FILE_CSV | FILE_COMMON | FILE_SHARE_WRITE);
    if(g_file != INVALID_HANDLE)
@@ -654,6 +698,12 @@ void OnTick()
       );
    }
 
+   Print("[EA] OnTick OK." + 
+   StringFormat("%s|%s|Q%.2f", 
+   RegimeStateToString(regime_state), 
+   RegimeSubTypeToString(regime_filter.GetSubType()), 
+   regime_filter.GetQScore()));  // 打印当前 Regime 状态
+
    UpdateStatusPanel(); // 更新状态面板
 }
 
@@ -727,8 +777,36 @@ void OnDeinit(const int reason)
          GlobalVariableDel(g_template_key);
    }
 
-   if(g_file != INVALID_HANDLE)
+   if(g_file != INVALID_HANDLE) 
       FileClose(g_file);
    if(g_signal_file != INVALID_HANDLE)
       FileClose(g_signal_file);
+}
+
+//---------------- 优化器接口 ----------------
+// 用于 MT5 策略测试器优化，返回自定义优化指标
+double OnTester()
+{
+   // 获取测试器统计数据
+   double netProfit = TesterStatistics(STAT_PROFIT);
+   double maxDD = TesterStatistics(STAT_BALANCE_DD);
+   double trades = TesterStatistics(STAT_TRADES);
+   double sharpe = TesterStatistics(STAT_SHARPE_RATIO);
+   
+   // 防止除零
+   if(maxDD <= 0) maxDD = 1.0;
+   if(trades < 10) return 0;  // 交易次数太少，返回 0
+   
+   // 自定义优化指标: 收益/最大回撤 * 交易次数权重
+   // 越大越好
+   double retOverDD = netProfit / maxDD;
+   double tradeBonus = MathMin(trades / 100.0, 1.0);  // 鼓励更多交易
+   
+   // 综合指标 (可调整权重)
+   double metric = retOverDD * (0.7 + 0.3 * tradeBonus);
+   
+   // 惩罚负收益
+   if(netProfit < 0) metric *= 0.1;
+   
+   return metric;
 }
