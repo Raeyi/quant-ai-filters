@@ -1,0 +1,47 @@
+;=====================================================================
+;     BollMR Walk-Forward 窗口2: 最优参数
+;  训练窗口: 2025.04.01 - 2025.06.30 (震荡期)
+;  结果: Sharpe=50.02, Profit=796.23, Trades=49, DD%=2.74%
+;=====================================================================
+
+;--- 策略选择 ---
+BollMRVariant=enhanced
+
+;--- M7 过滤器 ---
+SQ_Enable=0
+EF_Enable=0
+
+;--- BollMR 最优参数 (W2) ---
+BollMR_BollPeriod=18
+BollMR_BollDev=1.8
+BollMR_ATRPeriod=18
+BollMR_MAPeriod=60
+BollMR_MaxHoldingBars=9
+BollMR_EntryMode=C
+
+;--- BollMR 时间过滤 (非美盘) ---
+BollMR_Session=custom
+BollMR_CustomStartHour=2
+BollMR_CustomStartMinute=0
+BollMR_CustomEndHour=20
+BollMR_CustomEndMinute=0
+BollMR_TimeFilterMode=0
+BollMR_TimeExitEndSession=true
+
+;--- Regime Filter 参数 ---
+RF_Q_Score_Standby=0.25
+Regime_DI_Threshold=3.0
+MQ_Efficiency_Baseline=0.08
+MQ_FBR_Baseline=0.35
+MQ_ADX_Baseline=20.0
+MQ_Weight_Eff=0.25
+MQ_Weight_FBR=0.25
+MQ_Weight_ADX=0.20
+
+;--- 风控参数 ---
+InpRiskPercent=1.0
+MaxLosingStreak=3
+CooldownBarsAfter=5
+CooldownSeconds=60
+MAX_DAILY_LOSS_PERCENT=5.0
+GapCooldownBars=5

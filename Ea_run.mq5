@@ -225,7 +225,7 @@ int OnInit()
    registry.Register("donchian_child", &donchian_breakout, true);
    
    // 2. 选择策略变体
-   g_boll_variant = BollMRVariant;
+   g_boll_variant = StrategyVariant;
    StringToLower(g_boll_variant);
    
    // 组合策略特殊处理

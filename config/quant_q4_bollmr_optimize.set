@@ -1,0 +1,33 @@
+;=====================================================================
+;     BollMR Q4 季度优化 (2025.10-12)
+;=====================================================================
+BollMRVariant=enhanced
+SQ_Enable=0
+EF_Enable=0
+
+BollMR_BollPeriod=18||14 2 24||
+BollMR_BollDev=1.8||1.4 0.2 2.4||
+BollMR_ATRPeriod=14||8 2 20||
+BollMR_MAPeriod=70||40 10 100||
+BollMR_MaxHoldingBars=7||3 2 12||
+BollMR_EntryMode=C
+
+BollMR_Session=custom
+BollMR_CustomStartHour=2
+BollMR_CustomEndHour=20
+BollMR_TimeExitEndSession=true
+
+RF_Q_Score_Standby=0.30
+Regime_DI_Threshold=3.0
+MQ_Efficiency_Baseline=0.10
+MQ_FBR_Baseline=0.40
+MQ_ADX_Baseline=25.0
+MQ_Weight_Eff=0.25
+MQ_Weight_FBR=0.25
+MQ_Weight_ADX=0.20
+
+InpRiskPercent=1.0
+MaxLosingStreak=3
+CooldownBarsAfter=5
+CooldownSeconds=60
+MAX_DAILY_LOSS_PERCENT=5.0

@@ -1,0 +1,50 @@
+;=====================================================================
+;     Walk-Forward Step1: BollMR 最优结果
+;  优化窗口: 2025.01.02 - 2025.03.31
+;  Pass: 6 (Trades >= 30 样本量可靠)
+;=====================================================================
+
+;--- 优化结果摘要 ---
+; Profit: 102.31
+; Sharpe: 5.52
+; Max DD: 3.66%
+; Trades: 59
+; Custom: 0.30
+
+;--- 策略选择 ---
+BollMRVariant=enhanced
+
+;--- M7 过滤器 ---
+SQ_Enable=1
+EF_Enable=1
+
+;--- BollMR 最优参数 ---
+BollMR_BollPeriod=20
+BollMR_BollDev=1.6
+BollMR_ATRPeriod=10
+BollMR_MAPeriod=80
+BollMR_EntryMode=C
+MaxHoldingBars=5
+
+;--- BollMR 时间过滤 ---
+; 均值回归策略适合非美盘时段（波动较小，震荡为主）
+BollMR_TimeMode=custom
+BollMR_StartHour=2
+BollMR_EndHour=20
+
+;--- Regime Filter 参数 (当前最优) ---
+RF_Q_Score_Standby=0.25
+MQ_Efficiency_Baseline=0.16
+MQ_FBR_Baseline=0.40
+MQ_ADX_Baseline=20.0
+MQ_Weight_Eff=0.25
+MQ_Weight_FBR=0.25
+MQ_Weight_ADX=0.20
+
+;--- 风控参数 ---
+InpRiskPercent=1.0
+MaxLosingStreak=3
+CooldownBarsAfter=5
+CooldownSeconds=60
+MAX_DAILY_LOSS_PERCENT=5.0
+GapCooldownBars=5

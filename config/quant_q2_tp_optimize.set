@@ -1,0 +1,40 @@
+;=====================================================================
+;     TrendPullback Q2 季度优化 (2025.04-06)
+;=====================================================================
+BollMRVariant=trend_pullback
+SQ_Enable=0
+EF_Enable=0
+
+;--- 时间框架参数 (关键!) ---
+TP_LTF=5||5 5 30||
+TP_HTF=15||15 45 240||
+
+TP_EMA50_Period=70||40 10 100||
+TP_EMA200_Period=200||150 25 300||
+TP_PullbackDepthATR=0.5||0.3 0.1 0.8||
+TP_ATR_Period=14||8 2 20||
+TP_ATR_SL_Multi=1.5||1.0 0.5 2.5||
+TP_TrailATR_Multi=2.5||1.5 0.5 4.0||
+TP_Add1_Ratio=0.4||0.2 0.1 0.6||
+TP_MaxTotalRisk=3.0||2.0 0.5 5.0||
+
+TP_Session=europe,us,overlap
+TP_TimeFilterEntry=true
+TP_TimeExitEndSession=true
+TP_EnableAddPosition=true
+
+RF_Q_Score_Standby=0.01
+RF_Q_Score_Active=0.02
+Regime_DI_Threshold=3.0
+MQ_Efficiency_Baseline=0.10
+MQ_FBR_Baseline=0.40
+MQ_ADX_Baseline=25.0
+MQ_Weight_Eff=0.25
+MQ_Weight_FBR=0.25
+MQ_Weight_ADX=0.20
+
+InpRiskPercent=1.0
+MaxLosingStreak=3
+CooldownBarsAfter=5
+CooldownSeconds=60
+MAX_DAILY_LOSS_PERCENT=5.0
