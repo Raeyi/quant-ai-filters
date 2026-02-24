@@ -12,7 +12,7 @@
 ; Custom: 0.30
 
 ;--- 策略选择 ---
-BollMRVariant=enhanced
+StrategyVariant=enhanced
 
 ;--- M7 过滤器 ---
 SQ_Enable=1
