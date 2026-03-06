@@ -22,7 +22,7 @@ import pandas as pd
 
 def load_signals(filepath: str) -> pd.DataFrame:
     """加载信号数据"""
-    df = pd.read_csv(filepath, sep='\t')
+    df = pd.read_csv(filepath, sep='\t', encoding='utf-16')
     df['time'] = pd.to_datetime(df['time'])
     
     # 解析 regime 列
@@ -39,7 +39,7 @@ def load_signals(filepath: str) -> pd.DataFrame:
 
 def load_features(filepath: str) -> pd.DataFrame:
     """加载特征数据（支持扩展格式）"""
-    df = pd.read_csv(filepath, sep='\t')
+    df = pd.read_csv(filepath, sep='\t', encoding='utf-16')
     df['time'] = pd.to_datetime(df['time'])
     return df
 

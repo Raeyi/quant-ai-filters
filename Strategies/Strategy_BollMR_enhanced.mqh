@@ -141,13 +141,13 @@ public:
         {
             case SUBTYPE_RN_NORMAL:    // 正常震荡 - 最佳
             case SUBTYPE_RL_LOW:       // 低波动 - 可以
-            case SUBTYPE_TN_MILD:      // 温和趋势 - 可以
+            case SUBTYPE_RVA_NEWS:     // 消息震荡 - 虽然波动大，但也可能有回归机会，先允许通过观察表现
+            case SUBTYPE_TN_MILD:      // 温和趋势 - 谨慎，可以，但要配合趋势过滤使用
                 return true;
-            
             case SUBTYPE_TVB_TREND:    // 强趋势 - 容易逆势
             case SUBTYPE_TVA_EMOTION:  // 情绪脉冲 - 波动剧烈
             case SUBTYPE_RVB_FALSE:    // 假突破密集 - 信号不可靠
-            case SUBTYPE_RVA_NEWS:     // 消息震荡 - 风险太高
+            
                 return false;
             
             default:
@@ -185,6 +185,7 @@ public:
             return (
                     wick_break &&
                     close_recover &&
+                    CloseAt(1) > OpenAt(1) && // 当前K线收阳
                     CloseAt(1) <= GetBollMiddle(1) &&
                     MiddleUpClosed() &&
                     VolatilityOK());
@@ -261,6 +262,7 @@ public:
             return (
                     wick_break &&
                     close_recover &&
+                    CloseAt(1) < OpenAt(1) && // 前1根K线收阴
                     CloseAt(1) >= GetBollMiddle(1) &&
                     MiddleDownClosed() &&
                     VolatilityOK());
@@ -345,6 +347,11 @@ public:
     double CloseAt(int shift) // 取当前 K 线的收盘价
     {
         return iClose(_Symbol, _Period, shift);
+    }
+
+    double OpenAt(int shift) // 取当前 K 线的开盘价
+    {
+        return iOpen(_Symbol, _Period, shift);
     }
 
     bool MiddleUp() // 中轨向上（当前 K 线的中轨高于上一根 K 线的中轨）
@@ -560,8 +567,8 @@ public:
         datetime open_time =
             (datetime)PositionGetInteger(POSITION_TIME);
 
-        if(TimeCurrent() - open_time < BollMR_ShortestClosingTime)
-            return false;
+        // if(TimeCurrent() - open_time < BollMR_ShortestClosingTime)
+        //     return false;
 
         ENUM_POSITION_TYPE type =
                 (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);

@@ -34,6 +34,8 @@ private:
     bool allow_entry;
     bool in_cooldown;
     string block_reason;
+    int gap_skip_bars_remaining;
+    datetime last_bar_time;
 
 public:
     void Init()
@@ -55,6 +57,8 @@ public:
         allow_entry = true;
         in_cooldown = false;
         block_reason = "";
+        gap_skip_bars_remaining = 0;
+        last_bar_time = 0;
     }
 
     // 新K线通知（用于冷却器计时）
@@ -389,6 +393,34 @@ public:
             return 0;
         return m_structural_cooldown.GetRemainingBars();
     }
+
+    // ===== 缺口检查 =====
+    // 缺口检测 + 冷却
+    bool IsCheckGapOk()
+    {   
+        // 获取当前 K 线时间并检测缺口
+        datetime bar_time = iTime(_Symbol, _Period, 0);
+        if(last_bar_time > 0)
+        {
+            int period_sec = PeriodSeconds(_Period);
+            if(period_sec > 0 && (bar_time - last_bar_time) > (int)(period_sec * 1.5))
+            {
+                gap_skip_bars_remaining = GapCooldownBars;
+                // Print("[EA] Gap detected. Skip next ", gap_skip_bars_remaining, " bars.");
+            }
+        }
+        last_bar_time = bar_time;
+
+        if(gap_skip_bars_remaining > 0)
+        {
+            gap_skip_bars_remaining--;
+            // Print("[EA] Gap cooldown active. Remaining bars: ", gap_skip_bars_remaining);
+            return false;
+        }
+
+        return true;
+    }
+    
 
 private:
     double GetLastClosedProfit_()

@@ -232,12 +232,12 @@ public:
         m_is_tradable = (m_q_score >= m_q_score_threshold);
         
         // 调试日志：每100根K线输出一次
-        static int debug_counter = 0;
-        if(++debug_counter % 100 == 0)
-        {
-            Print(StringFormat("[MarketQuality] eff=%.3f fbr=%.3f adx=%.1f Q=%.3f (eff_s=%.2f fbr_s=%.2f adx_s=%.2f)",
-                m_efficiency, m_false_breakout_rate, m_adx, m_q_score, eff_score, fbr_score, adx_score));
-        }
+        // static int debug_counter = 0;
+        // if(++debug_counter % 300 == 0)
+        // {
+        //     Print(StringFormat("[MarketQuality] eff=%.3f fbr=%.3f adx=%.1f Q=%.3f (eff_s=%.2f fbr_s=%.2f adx_s=%.2f)",
+        //         m_efficiency, m_false_breakout_rate, m_adx, m_q_score, eff_score, fbr_score, adx_score));
+        // }
         
         return true;
     }

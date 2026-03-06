@@ -83,13 +83,7 @@ public:
 
       // 新开仓信号：已有仓位时拒绝
       // 每分钟最多打印一次拒绝日志
-      static datetime last_reject_log = 0;
-      datetime current_time = TimeCurrent();
-      if(current_time - last_reject_log >= 60)
-      {
-         last_reject_log = current_time;
-         Print("[PositionCoordinator] Position exists, rejecting new trade signal. type=", signal.type, " source=", signal.source, " current_side=", current_side);
-      }
+      Print("[PositionCoordinator] Position exists, rejecting new trade signal. type=", signal.type, " source=", signal.source, " current_side=", current_side);
       return false;
    }
 
@@ -138,6 +132,11 @@ public:
 
       return PositionGetDouble(POSITION_PROFIT);
    }
+
+    void PrintState() const
+    {
+        Print("[PositionCoordinator] State: side=", current_side, " source=", current_source);
+    }
 };
 
 #endif // __POSITION_COORDINATOR_MQH__

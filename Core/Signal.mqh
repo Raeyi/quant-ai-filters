@@ -21,7 +21,7 @@ enum SignalType
 // 信号结构体定义
 struct Signal
 {
-    SignalType type;   // BUY / SELL / NONE / ADD_LONG / ADD_SHORT
+    SignalType type;   // BUY / SELL / NONE / ADD_LONG / ADD_SHORT / EXIT
     double confidence;       // 0.0 ~ 1.0
     string source;           // 哪个策略产生的
     datetime time;           // 信号时间

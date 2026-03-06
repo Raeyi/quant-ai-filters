@@ -86,8 +86,6 @@ bool g_period_valid = true;
 bool g_period_warned = false;
 datetime g_suppress_chart_event_until = 0;
 string g_template_key = "";
-datetime g_last_bar_time = 0;
-int g_gap_skip_bars_remaining = 0;
 string g_boll_variant = "";
 
 // 指标导出文件句柄（如果需要导出 features）
@@ -95,47 +93,6 @@ int g_file = INVALID_HANDLE;
 int g_signal_file = INVALID_HANDLE;
 int g_signal_pos = 0;
 int g_signal_state = 0;
-
-//---------------- 新 bar 检测（沿用你旧 EA 的） ----------------
-bool IsNewBar()
-{
-   static datetime lastBar = 0;
-   datetime barTime = iTime(_Symbol, _Period, 0);
-   if(barTime != lastBar)
-   {
-      lastBar = barTime;
-      return true;
-   }
-   return false;
-}
-
-void UpdateStatusPanel()
-{
-   bool ea_disabled = (!g_period_valid && DisableOnTimeframeChange);
-   string reason = "";
-   if(ea_disabled)
-      reason = "TF " + EnumToString((ENUM_TIMEFRAMES)_Period) + " != " + EnumToString(TargetTimeframe);
-   
-   // 统一通过注册表获取时间过滤状态
-   bool time_allowed = registry.TimeFilterOK();
-   string time_reason = "";
-   if(!time_allowed)
-      time_reason = "交易时间限制";
-
-   // 统一从 RiskPipeline 获取结构冷却状态
-   bool sc_active = risk_pipeline.IsStructuralCooldownActive();
-   string sc_reason = risk_pipeline.GetStructuralCooldownReason();
-   int sc_remaining = risk_pipeline.GetStructuralCooldownRemaining();
-
-   // 获取 Regime 状态
-   RegimeState regime_state = regime_filter.GetState();
-   string regime_state_str = RegimeStateToString(regime_state);
-   string subtype_str = RegimeSubTypeToString(regime_filter.GetSubType());
-   double q_score = regime_filter.GetQScore();
-
-   status_panel.Update(risk_pipeline, pos_coord, ea_disabled, reason, time_allowed, time_reason,
-                       sc_active, sc_reason, sc_remaining, regime_state_str, subtype_str, q_score);
-}
 
 //---------------- 初始化 ----------------
 int OnInit()
@@ -335,48 +292,15 @@ int OnInit()
 //---------------- Tick 驱动 ----------------
 void OnTick()
 {
-   if(!g_period_valid && DisableOnTimeframeChange)
-   {
-      UpdateStatusPanel();
-      return;
-   }
+   
+   Signal signal;
+   RegimeState regime_state = regime_filter.GetState();
 
-   // 只在新 bar 上做决策
-   if(!IsNewBar())
-      return;
-
-
-   // 通知 RiskPipeline 新K线（用于冷却器计时）
-   risk_pipeline.OnNewBar();
-
-   // 缺口检测 + 冷却
-   datetime bar_time = iTime(_Symbol, _Period, 0);
-   if(g_last_bar_time > 0)
-   {
-      int period_sec = PeriodSeconds(_Period);
-      if(period_sec > 0 && (bar_time - g_last_bar_time) > (int)(period_sec * 1.5))
-      {
-         g_gap_skip_bars_remaining = GapCooldownBars;
-         // Print("[EA] Gap detected. Skip next ", g_gap_skip_bars_remaining, " bars.");
-      }
-   }
-   g_last_bar_time = bar_time;
-
-   if(g_gap_skip_bars_remaining > 0)
-   {
-      g_gap_skip_bars_remaining--;
-      // Print("[EA] Gap cooldown active. Remaining bars: ", g_gap_skip_bars_remaining);
-      UpdateStatusPanel();
-      return;
-   }
-
-   // 指标数据更新（统一通过注册表）
+   // 指标数据更新
    if(!registry.UpdateIndicators())
       return;
 
-   pos_coord.SyncFromTerminal(); // 同步仓位状态
-
-   // 更新 Regime Filter
+   // 更新 Regime Filter 状态
    double close = iClose(_Symbol, _Period, 1);
    double high = iHigh(_Symbol, _Period, 1);
    double low = iLow(_Symbol, _Period, 1);
@@ -384,18 +308,57 @@ void OnTick()
    {
       Print("[EA] RegimeFilter update failed");
    }
-   
-   // 检查 Regime 状态
-   RegimeState regime_state = regime_filter.GetState();
-   bool regime_active = (regime_state == STATE_ACTIVE);
-   
-   // Regime 状态调试输出
-   static int last_regime_log_bar = -1;
-   int current_bar = iBars(_Symbol, _Period);
-   if(current_bar != last_regime_log_bar && regime_state != STATE_ACTIVE)
+
+   if(!g_period_valid && DisableOnTimeframeChange)
    {
-      last_regime_log_bar = current_bar;
+      UpdateStatusPanel();
+      return;
+   }
+
+   UpdateStatusPanel();
+
+   // 只在新 bar 上执行一次, 避免重复计算
+   if(!IsNewBar())
+      return;
+
+   // 检查 Regime Filter 状态
+   bool regime_active = (regime_state == STATE_ACTIVE);
+
+   // 获取信号
+   signal = manager.GetSignal();
+
+   // 管理仓位
+   ManagePositionExitOnBar(signal, regime_state);
+
+   // 同步仓位状态
+   pos_coord.SyncFromTerminal();
+
+   UpdateStatusPanel();
+
+   if(!regime_active)
+   {  
+      // 如果当前信号不是平仓信号，就过滤掉（如果是平仓信号则放行，允许在非 ACTIVE 状态下平仓）
+      if(signal.type != SIGNAL_EXIT)
+      {
+         signal.type = SIGNAL_NONE;
+         signal.source = "";  // 清空 source，表示信号被过滤
+      }
+      // Regime Filter 状态调试输出 - 只在新 bar 上打印一次
       regime_filter.PrintState();
+      return;
+   }
+   
+   // Regime Filter 状态调试输出
+   regime_filter.PrintState();
+
+   // 风控管道
+   // 通知 RiskPipeline 新K线（用于冷却器计时）
+   risk_pipeline.OnNewBar();
+
+   // 检查是否跳过当前 K 线（冷却器）
+   if (!risk_pipeline.IsCheckGapOk())
+   {
+      return;
    }
 
    // 更新结构冷却器状态（检查是否可以解除冷却）
@@ -415,151 +378,33 @@ void OnTick()
       
       if(atr > 0)
          risk_pipeline.UpdateCooldownState(price, atr, structurePrice);
+      
+      return; // 冷却中不执行后续逻辑
    }
 
-   Signal signal; // 声明信号变量
-   signal = manager.GetSignal(); // 获取策略信号
-   
-   // Regime Filter 过滤（STANDBY 时禁止新开仓）
-   if(signal.type == SIGNAL_BUY || signal.type == SIGNAL_SELL)
-   {
-      if(!regime_active)
-      {
-         // 每分钟最多打印一次 Regime 过滤日志
-         static datetime last_regime_reject_log = 0;
-         datetime current_time = TimeCurrent();
-         if(current_time - last_regime_reject_log >= 60)
-         {
-            last_regime_reject_log = current_time;
-            Print("[EA] RegimeFilter: STANDBY state, rejecting signal from ", signal.source);
-            regime_filter.PrintState();
-         }
-         signal.type = SIGNAL_NONE;
-         signal.source = "";  // 清空 source，表示信号被过滤
-      }
-   }
+   UpdateStatusPanel();
 
-   int signal_event = 0;
-   bool has_event = false;
-   if(signal.type == SIGNAL_BUY)
-   {
-      g_signal_pos = 1;
-      signal_event = 1;
-      has_event = true;
-   }
-   else if(signal.type == SIGNAL_SELL)
-   {
-      g_signal_pos = -1;
-      signal_event = -1;
-      has_event = true;
-   }
-   else if(signal.type == SIGNAL_EXIT)
-   {
-      g_signal_pos = 0;
-      signal_event = 0;
-      has_event = true;
-   }
-
-   // 如果有信号，就更新状态
-   if(has_event)
-      g_signal_state = g_signal_pos;
-
-   if(g_signal_file != INVALID_HANDLE)
-   {
-      // 使用辅助函数获取 Regime 状态字符串
-      string regime_state_str = RegimeStateToString(regime_state);
-      string subtype_str = RegimeSubTypeToString(regime_filter.GetSubType());
-      FileWrite(g_signal_file,
-                TimeToString(iTime(_Symbol, _Period, 0), TIME_DATE|TIME_SECONDS),
-                g_signal_state,
-                (has_event ? IntegerToString(signal_event) : ""),
-                signal.source,
-                StringFormat("%s|%s|Q%.2f", regime_state_str, subtype_str, regime_filter.GetQScore()));
-   }
-
-   if(pos_coord.HasPosition()) // 如果当前有仓位，先检查是否需要平仓
-   {
-      bool should_close = risk_pipeline.ShouldClosePosition(signal);
-      if(should_close) //需要平仓
-      {
-         bool closed = false;
-
-         if(signal.type == SIGNAL_EXIT && signal.exit_volume > 0.0)
-         {
-            double pos_vol = PositionGetDouble(POSITION_VOLUME);
-            double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-            double min_vol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-            double close_vol = MathMin(signal.exit_volume, pos_vol);
-
-            if(close_vol >= pos_vol - step * 0.5)
-               closed = executor.Close();
-            else if(close_vol >= min_vol)
-               closed = executor.ClosePartial(close_vol);
-            else
-               closed = executor.Close();
-         }
-         else
-         {
-            closed = executor.Close();
-         }
-
-         if(closed)
-         {
-            if(!PositionSelect(_Symbol))
-            {
-               risk_pipeline.OnPositionClosed();  // 只有当仓位确实关闭后才调用这个函数，防止误判
-               pos_coord.OnPositionClosed();      // 更新仓位协调器状态
-               if(AlertOnOrderClose)
-                  Alert("平仓完成: ", _Symbol);
-            }
-            else
-            {
-               pos_coord.SyncFromTerminal();
-            }
-         }
-         else
-         {
-            Print("[EA] ", signal.source, " Failed to close position when requested.");
-            if(AlertOnOrderFail)
-               Alert("平仓失败: ", _Symbol);
-         }
-      }
-   }
-
-   if(signal.type != SIGNAL_NONE && signal.type != SIGNAL_EXIT) // 如果有开仓信号
+   // 如果有开仓, 加仓信号
+   if(signal.type == SIGNAL_BUY || signal.type == SIGNAL_SELL || signal.type == SIGNAL_ADD_LONG || signal.type == SIGNAL_ADD_SHORT)
    {
       Print("[EA] Processing opening signal. type=", signal.type, " source=", signal.source);
-      // 3.1 多策略冲突仲裁：单品种单向一仓
       if(!pos_coord.AllowSignal(signal))
       {
-         // 每分钟最多打印一次PositionCoordinator拒绝日志
-         static datetime last_pos_coord_reject_log = 0;
-         datetime current_time = TimeCurrent();
-         if(current_time - last_pos_coord_reject_log >= 60)
-         {
-            last_pos_coord_reject_log = current_time;
-            Print("[EA] PositionCoordinator rejected signal from ", signal.source);
-         }
-         // 即便有信号，当前有仓位或不允许冲突，就直接退出
+         pos_coord.PrintState();
+         return;
       }
       else
       {
-         // 3.2 AI 决策网关过滤
+         // AI 决策网关过滤
          double ai_score = 1.0;
          if(!ai_gateway.Pass(signal, ai_score))
          {
-            // 每分钟最多打印一次AIDecisionGateway拒绝日志
-            static datetime last_ai_gateway_reject_log = 0;
-            datetime current_time = TimeCurrent();
-            if(current_time - last_ai_gateway_reject_log >= 60)
-            {
-               last_ai_gateway_reject_log = current_time;
-               Print("[EA] AIDecisionGateway rejected signal from ", signal.source);
-            }
+            ai_gateway.PrintState(signal);
+            return; // 不通过则过滤
          }
          else
          {
-            // 3.3 风控构建 TradeRequest
+            // 风控构建 TradeRequest
             TradeRequest req;
             if(risk_pipeline.BuildTrade(signal, req))
             {
@@ -569,7 +414,7 @@ void OnTick()
                      " sl=", DoubleToString(req.sl,_Digits),
                      " tp=", DoubleToString(req.tp,_Digits));
 
-               // 3.4 执行下单
+               // 执行下单
                if(executor.Execute(req, signal.source))
                {
                   Print("[EA] Order executed.");
@@ -578,133 +423,40 @@ void OnTick()
                            " vol=", DoubleToString(req.volume,2));
                   risk_pipeline.OnTradeExecuted(signal);
                   pos_coord.OnPositionOpened(signal);
+                  RecordSignal(signal.type, signal.source, regime_state); 
+                  RecordFeatures(signal.type, signal.source, regime_state);
+                  signal.type = SIGNAL_NONE; // 清空信号类型，防止后续重复处理
                }
                else
                {
                   if(AlertOnOrderFail)
+                  {
+                     RecordSignal(signal.type, signal.source, regime_state); 
+                     RecordFeatures(signal.type, signal.source, regime_state);
+                     signal.type = SIGNAL_NONE; // 清空信号类型，防止后续重复处理
                      Alert("开仓失败: ", _Symbol, " ", (req.direction==TRADE_BUY?"BUY":"SELL"));
+                  }
                }
             }
             else
             {
-              string sig_dir = (signal.type==SIGNAL_BUY ? "BUY" :
-                               (signal.type==SIGNAL_SELL ? "SELL" : "OTHER"));
-              Print("[EA] BuildTrade failed. source=", signal.source,
-                    " dir=", sig_dir,
-                    " price=", DoubleToString(signal.price,_Digits),
-                    " sl=", DoubleToString(signal.sl,_Digits),
-                    " tp=", DoubleToString(signal.tp,_Digits),
-                    " reason=", risk_pipeline.GetBlockReason());
+               string sig_dir = (signal.type==SIGNAL_BUY ? "BUY" :
+                                 (signal.type==SIGNAL_SELL ? "SELL" : "OTHER"));
+               RecordSignal(signal.type, signal.source, regime_state); 
+               RecordFeatures(signal.type, signal.source, regime_state);
+               signal.type = SIGNAL_NONE; // 清空信号类型，防止后续重复处理         
+               Print("[EA] BuildTrade failed. source=", signal.source,
+                     " dir=", sig_dir,
+                     " price=", DoubleToString(signal.price,_Digits),
+                     " sl=", DoubleToString(signal.sl,_Digits),
+                     " tp=", DoubleToString(signal.tp,_Digits),
+                     " reason=", risk_pipeline.GetBlockReason());
             }
          }
       }
    }
 
-   // 5. 特征导出（扩展版，用于 ML/RL 训练）
-   if(g_file != INVALID_HANDLE)
-   {
-      datetime bar_time = iTime(_Symbol, _Period, 1);
-      MqlDateTime dt;
-      TimeToStruct(bar_time, dt);
-      
-      // 时间特征
-      int hour = dt.hour;
-      int day_of_week = dt.day_of_week;  // 0=Sunday, 1=Monday, ...
-      int session = 0;  // 0=asia, 1=europe, 2=us, 3=overlap
-      if(hour >= 0 && hour < 8) session = 0;       // Asia
-      else if(hour >= 7 && hour < 16) session = 1; // Europe
-      else if(hour >= 13 && hour < 21) session = 2; // US
-      if((hour >= 7 && hour < 8) || (hour >= 13 && hour < 16)) session = 3; // Overlap
-      
-      // 价格特征
-      double open1   = iOpen(_Symbol, _Period, 1);
-      double high1   = iHigh(_Symbol, _Period, 1);
-      double low1    = iLow(_Symbol, _Period, 1);
-      double close1  = iClose(_Symbol, _Period, 1);
-      double close2  = iClose(_Symbol, _Period, 2);  // 前一根收盘价
-      double price_change = close1 - close2;
-      double price_range  = high1 - low1;
-      
-      // 技术指标
-      double atr1    = GetATR(1);
-      double bu      = GetBollUpper(0);
-      double bl      = GetBollLower(0);
-      double bm      = (bu + bl) / 2.0;
-      double boll_width = (bu - bl) / (bm + 0.0001);  // 避免除零
-      double boll_position = (close1 - bl) / (bu - bl + 0.0001);  // 0-1 范围
-      
-      // ADX 和 RSI
-      double adx = regime_filter.GetADX();
-      double rsi = GetRSI(1);  // 使用全局 RSI 函数
-      
-      // 获取快照（一次性获取所有状态）
-      RegimeSnapshot snap = regime_filter.GetSnapshot();
-      
-      // 市场质量
-      double efficiency = snap.efficiency;
-      double fbr = snap.false_breakout_rate;
-      double q_score = snap.q_score;
-      
-      // Regime 状态
-      int regime_state_int = (int)regime_state;  // 0=ACTIVE, 1=STANDBY, 2=TRANSITION
-      int regime_type = (int)snap.regime_type;  // 0=RANGE, 1=TREND
-      int sub_type = (int)snap.sub_type;  // 0-7
-      int trend_dir = (int)snap.trend_direction;  // -1, 0, 1
-      int vol_state = (int)snap.volatility_state;  // 0=LOW, 1=NORMAL, 2=HIGH
-      
-      // 策略信号
-      int final_sig = 0;
-      if(signal.type == SIGNAL_BUY) final_sig = 1;
-      else if(signal.type == SIGNAL_SELL) final_sig = -1;
-      
-      // 仓位大小（记录信号时的参考仓位）
-      double pos_size = 0.01;  // 默认最小仓位
-
-      FileWrite(g_file,
-         // 时间特征
-         TimeToString(bar_time, TIME_DATE|TIME_SECONDS),
-         IntegerToString(hour),
-         IntegerToString(day_of_week),
-         IntegerToString(session),
-         // 价格特征
-         DoubleToString(open1, _Digits),
-         DoubleToString(high1, _Digits),
-         DoubleToString(low1, _Digits),
-         DoubleToString(close1, _Digits),
-         DoubleToString(price_change, _Digits),
-         DoubleToString(price_range, _Digits),
-         // 技术指标
-         DoubleToString(atr1, _Digits),
-         DoubleToString(adx, 2),
-         DoubleToString(rsi, 2),
-         DoubleToString(bu, _Digits),
-         DoubleToString(bl, _Digits),
-         DoubleToString(bm, _Digits),
-         DoubleToString(boll_width, 6),
-         DoubleToString(boll_position, 4),
-         // 市场质量
-         DoubleToString(efficiency, 4),
-         DoubleToString(fbr, 4),
-         DoubleToString(q_score, 4),
-         // Regime 状态
-         IntegerToString(regime_state_int),
-         IntegerToString(regime_type),
-         IntegerToString(sub_type),
-         IntegerToString(trend_dir),
-         IntegerToString(vol_state),
-         // 策略信号
-         IntegerToString(final_sig),
-         DoubleToString(pos_size, 2)
-      );
-   }
-
-   Print("[EA] OnTick OK." + 
-   StringFormat("%s|%s|Q%.2f", 
-   RegimeStateToString(regime_state), 
-   RegimeSubTypeToString(regime_filter.GetSubType()), 
-   regime_filter.GetQScore()));  // 打印当前 Regime 状态
-
-   UpdateStatusPanel(); // 更新状态面板
+   UpdateStatusPanel();
 }
 
 //---------------- 定时器 ----------------
@@ -809,4 +561,252 @@ double OnTester()
    if(netProfit < 0) metric *= 0.1;
    
    return metric;
+}
+
+
+//---------------- 新 bar 检测（沿用你旧 EA 的） ----------------
+bool IsNewBar()
+{
+   static datetime lastBar = 0;
+   datetime barTime = iTime(_Symbol, _Period, 0);
+   if(barTime != lastBar)
+   {
+      lastBar = barTime;
+      return true;
+   }
+   return false;
+}
+
+//---------------- 更新状态面板 ----------------
+void UpdateStatusPanel()
+{
+   bool ea_disabled = (!g_period_valid && DisableOnTimeframeChange);
+   string reason = "";
+   if(ea_disabled)
+      reason = "TF " + EnumToString((ENUM_TIMEFRAMES)_Period) + " != " + EnumToString(TargetTimeframe);
+   
+   // 统一通过注册表获取时间过滤状态
+   bool time_allowed = registry.TimeFilterOK();
+   string time_reason = "";
+   if(!time_allowed)
+      time_reason = "交易时间限制";
+
+   // 统一从 RiskPipeline 获取结构冷却状态
+   bool sc_active = risk_pipeline.IsStructuralCooldownActive();
+   string sc_reason = risk_pipeline.GetStructuralCooldownReason();
+   int sc_remaining = risk_pipeline.GetStructuralCooldownRemaining();
+
+   // 获取 Regime 状态
+   RegimeState regime_state = regime_filter.GetState();
+   string regime_state_str = RegimeStateToString(regime_state);
+   string subtype_str = RegimeSubTypeToString(regime_filter.GetSubType());
+   double q_score = regime_filter.GetQScore();
+
+   status_panel.Update(risk_pipeline, pos_coord, ea_disabled, reason, time_allowed, time_reason,
+                       sc_active, sc_reason, sc_remaining, regime_state_str, subtype_str, q_score);
+}
+
+void ManagePositionExitOnBar(Signal &signal, RegimeState regime_state){
+   if(pos_coord.HasPosition()) // 如果当前有仓位，先检查是否需要平仓
+   {
+      bool should_close = risk_pipeline.ShouldClosePosition(signal);
+      if(should_close) //需要平仓
+      {
+         bool closed = false;
+
+         if(signal.type == SIGNAL_EXIT && signal.exit_volume > 0.0)
+         {
+            double pos_vol = PositionGetDouble(POSITION_VOLUME);
+            double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+            double min_vol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+            double close_vol = MathMin(signal.exit_volume, pos_vol);
+
+            if(close_vol >= pos_vol - step * 0.5)
+               closed = executor.Close();
+            else if(close_vol >= min_vol)
+               closed = executor.ClosePartial(close_vol);
+            else
+               closed = executor.Close();
+         }
+         else
+         {
+            closed = executor.Close();
+         } 
+
+         if(closed)
+         {
+            if(!PositionSelect(_Symbol))
+            {
+               risk_pipeline.OnPositionClosed();  // 只有当仓位确实关闭后才调用这个函数，防止误判
+               pos_coord.OnPositionClosed();      // 更新仓位协调器状态
+               if(AlertOnOrderClose)
+                  Alert("平仓完成: ", _Symbol);
+                  pos_coord.PrintState();
+                  RecordSignal(SIGNAL_EXIT, signal.source, regime_state); 
+                  RecordFeatures(SIGNAL_EXIT, signal.source, regime_state);
+                  signal.type = SIGNAL_NONE; // 平仓信号处理完成，重置信号类型，防止后续重复处理
+            }
+            else
+            {
+               pos_coord.SyncFromTerminal(); // 如果平仓后仓位仍然存在，可能是部分平仓或平仓失败，强制同步状态以防止不一致
+               pos_coord.PrintState();
+               RecordSignal(SIGNAL_EXIT, signal.source, regime_state); 
+               RecordFeatures(SIGNAL_EXIT, signal.source, regime_state);
+               signal.type = SIGNAL_NONE; // 无论平仓成功与否都重置信号类型，防止重复处理
+               Print("[EA] ", signal.source, " Position still exists after close attempt. Syncing state."); // 如果平仓失败，发出警报
+            }
+         }
+         else
+         {  
+            Print("[EA] ", signal.source, " Failed to close position when requested.");
+            pos_coord.PrintState();
+            RecordSignal(SIGNAL_EXIT, signal.source, regime_state); 
+            RecordFeatures(SIGNAL_EXIT, signal.source, regime_state);
+            signal.type = SIGNAL_NONE; // 无论平仓成功与否都重置信号类型，防止重复处理
+            if(AlertOnOrderFail)
+               Alert("平仓失败: ", _Symbol); // 如果平仓失败，发出警报
+         }
+      }
+   }
+}
+
+void RecordSignal(SignalType signal_type, string signal_source, RegimeState regime_state){
+   int signal_event = 0;
+   bool has_event = false;
+   if(signal_type == SIGNAL_BUY)
+   {
+      g_signal_pos = 1;
+      signal_event = 1;
+      has_event = true;
+   }
+   else if(signal_type == SIGNAL_SELL)
+   {
+      g_signal_pos = -1;
+      signal_event = -1;
+      has_event = true;
+   }
+   else if(signal_type == SIGNAL_EXIT)
+   {
+      g_signal_pos = 0;
+      signal_event = 0;
+      has_event = true;
+   }
+
+   // 如果有信号，就更新状态
+   if(has_event)
+      g_signal_state = g_signal_pos;
+
+   if(g_signal_file != INVALID_HANDLE)
+   {
+      // 使用辅助函数获取 Regime 状态字符串
+      string regime_state_str = RegimeStateToString(regime_state);
+      string subtype_str = RegimeSubTypeToString(regime_filter.GetSubType());
+      FileWrite(g_signal_file,
+                  TimeToString(iTime(_Symbol, _Period, 0), TIME_DATE|TIME_SECONDS),
+                  g_signal_state,
+                  (has_event ? IntegerToString(signal_event) : ""),
+                  signal_source,
+                  StringFormat("%s|%s|Q%.2f", regime_state_str, subtype_str, regime_filter.GetQScore()));
+   }
+
+}
+
+void RecordFeatures(SignalType signal_type, string signal_source, RegimeState regime_state)
+{
+   if(g_file != INVALID_HANDLE)
+   {
+      datetime bar_time = iTime(_Symbol, _Period, 1);
+      MqlDateTime dt;
+      TimeToStruct(bar_time, dt);
+      
+      // 时间特征
+      int hour = dt.hour;
+      int day_of_week = dt.day_of_week;  // 0=Sunday, 1=Monday, ...
+      int session = 0;  // 0=asia, 1=europe, 2=us, 3=overlap
+      if(hour >= 0 && hour < 8) session = 0;       // Asia
+      else if(hour >= 7 && hour < 16) session = 1; // Europe
+      else if(hour >= 13 && hour < 21) session = 2; // US
+      if((hour >= 7 && hour < 8) || (hour >= 13 && hour < 16)) session = 3; // Overlap
+      
+      // 价格特征
+      double open1   = iOpen(_Symbol, _Period, 1);
+      double high1   = iHigh(_Symbol, _Period, 1);
+      double low1    = iLow(_Symbol, _Period, 1);
+      double close1  = iClose(_Symbol, _Period, 1);
+      double close2  = iClose(_Symbol, _Period, 2);  // 前一根收盘价
+      double price_change = close1 - close2;
+      double price_range  = high1 - low1;
+      
+      // 技术指标
+      double atr1    = GetATR(1);
+      double bu      = GetBollUpper(0);
+      double bl      = GetBollLower(0);
+      double bm      = (bu + bl) / 2.0;
+      double boll_width = (bu - bl) / (bm + 0.0001);  // 避免除零
+      double boll_position = (close1 - bl) / (bu - bl + 0.0001);  // 0-1 范围
+      
+      // ADX 和 RSI
+      double adx = regime_filter.GetADX();
+      double rsi = GetRSI(1);  // 使用全局 RSI 函数
+      
+      // 获取快照（一次性获取所有状态）
+      RegimeSnapshot snap = regime_filter.GetSnapshot();
+      
+      // 市场质量
+      double efficiency = snap.efficiency;
+      double fbr = snap.false_breakout_rate;
+      double q_score = snap.q_score;
+      
+      // Regime 状态
+      int regime_state_int = (int)regime_state;  // 0=ACTIVE, 1=STANDBY, 2=TRANSITION
+      int regime_type = (int)snap.regime_type;  // 0=RANGE, 1=TREND
+      int sub_type = (int)snap.sub_type;  // 0-7
+      int trend_dir = (int)snap.trend_direction;  // -1, 0, 1
+      int vol_state = (int)snap.volatility_state;  // 0=LOW, 1=NORMAL, 2=HIGH
+      
+      // 策略信号
+      int final_sig = 0;
+      if(signal_type == SIGNAL_BUY) final_sig = 1;
+      else if(signal_type == SIGNAL_SELL) final_sig = -1;
+      
+      // 仓位大小（记录信号时的参考仓位）
+      double pos_size = 0.01;  // 默认最小仓位
+
+      FileWrite(g_file,
+         // 时间特征
+         TimeToString(bar_time, TIME_DATE|TIME_SECONDS),
+         IntegerToString(hour),
+         IntegerToString(day_of_week),
+         IntegerToString(session),
+         // 价格特征
+         DoubleToString(open1, _Digits),
+         DoubleToString(high1, _Digits),
+         DoubleToString(low1, _Digits),
+         DoubleToString(close1, _Digits),
+         DoubleToString(price_change, _Digits),
+         DoubleToString(price_range, _Digits),
+         // 技术指标
+         DoubleToString(atr1, _Digits),
+         DoubleToString(adx, 2),
+         DoubleToString(rsi, 2),
+         DoubleToString(bu, _Digits),
+         DoubleToString(bl, _Digits),
+         DoubleToString(bm, _Digits),
+         DoubleToString(boll_width, 6),
+         DoubleToString(boll_position, 4),
+         // 市场质量
+         DoubleToString(efficiency, 4),
+         DoubleToString(fbr, 4),
+         DoubleToString(q_score, 4),
+         // Regime 状态
+         IntegerToString(regime_state_int),
+         IntegerToString(regime_type),
+         IntegerToString(sub_type),
+         IntegerToString(trend_dir),
+         IntegerToString(vol_state),
+         // 策略信号
+         IntegerToString(final_sig),
+         DoubleToString(pos_size, 2)
+      );
+   }
 }

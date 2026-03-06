@@ -13,7 +13,8 @@
 input group "========== Regime 指标设置 =========="
 input int     Regime_ADX_Period = 14;            // ADX 周期
 input double  Regime_ADX_Trend_Threshold = 25.0; // ADX 趋势阈值
-input double  Regime_DI_Threshold = 3.0;         // DI差值趋势阈值 (原5.0)
+input double  Regime_DI_Threshold = 12.0;         // DI差值趋势阈值（10~18）
+input double  Regime_DI_ExitThreshold  = 7.5;      // DI差值趋势退出阈值（5~10）
 input int     Regime_ATR_Period = 14;            // ATR 周期
 input int     Regime_Vol_Lookback = 100;         // 波动率百分位窗口
 input double  Regime_Vol_Low_Percentile = 25.0;  // 低波动百分位
@@ -65,7 +66,7 @@ public:
         m_minus_di_handle(INVALID_HANDLE),
         m_adx_period(14),
         m_atr_period(14),
-        m_vol_lookback(100),
+        m_vol_lookback(200),
         m_vol_low_pct(25.0),
         m_vol_high_pct(75.0),
         m_trend_strength(0.0),
@@ -160,13 +161,34 @@ public:
         
         // 计算趋势方向
         double di_diff = m_plus_di_buffer[0] - m_minus_di_buffer[0];
-        if(di_diff > Regime_DI_Threshold)
-            m_trend_direction = TREND_BULL;
-        else if(di_diff < -Regime_DI_Threshold)
-            m_trend_direction = TREND_BEAR;
-        else
-            m_trend_direction = TREND_NONE;
-        
+        TrendDirection prev_direction = m_trend_direction;
+
+        if(prev_direction == TREND_BULL)
+        {
+            // 已经在BULL，只有明显走弱才退出
+            if(di_diff < Regime_DI_ExitThreshold || m_trend_strength < 0.30)
+                m_trend_direction = TREND_NONE;
+            else
+                m_trend_direction = TREND_BULL;
+        }
+        else if(prev_direction == TREND_BEAR)
+        {
+            if(di_diff > -Regime_DI_ExitThreshold || m_trend_strength < 0.30)
+                m_trend_direction = TREND_NONE;
+            else
+                m_trend_direction = TREND_BEAR;
+        }
+        else // 当前是 NONE
+        {
+            // 只有足够强的信号才进入趋势
+            if(m_trend_strength > 0.35 && di_diff > Regime_DI_Threshold)
+                m_trend_direction = TREND_BULL;
+            else if(m_trend_strength > 0.35 && di_diff < -Regime_DI_Threshold)
+                m_trend_direction = TREND_BEAR;
+            else
+                m_trend_direction = TREND_NONE;
+        }
+            
         return true;
     }
     
@@ -208,7 +230,7 @@ public:
     //+--------------------------------------------------------------
     VolatilityState ClassifyVolatility()
     {
-        if(m_vol_history_count < 20)
+        if(m_vol_history_count < 50)
             return VOL_NORMAL;
         
         // 计算当前 ATR 的百分位

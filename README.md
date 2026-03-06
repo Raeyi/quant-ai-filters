@@ -6,80 +6,14 @@
 - 结构：**Regime 引擎 + 策略选择器 + 策略族 + 风控层**
 - 版本：v2.4.0
 
-## 开发路线
-
-```
-Phase 1: 基础架构 ✅
-├── M1: 策略框架           → v2.0.0
-└── M2: 风控管道           → v2.1.0
-
-Phase 2: 策略开发 ✅
-├── M3: Mean Reversion     → v2.1.0
-└── M4: Trend Pullback     → v2.1.0
-
-Phase 3: Regime 引擎 ✅
-└── M5: Regime Filter      → v2.2.0
-
-Phase 4: 架构重构 ✅
-├── M6: 架构清理           → v2.3.0
-├── M7: XAUUSD 职业化过滤   → v2.4.0 ← 已完成
-└── M8: AI 参数优化         → v2.5.0 ← 当前
-
-Phase 5: 策略扩展 ⏳
-└── M9: XAUUSD Alpha        → v2.6.0
-```
-
----
-
-## 系统架构
-
-### 当前问题：双重过滤
-
-**诊断结果**：当前架构存在严重的重复过滤问题
-
-```
-信号流程（当前 - 臃肿）：
-┌──────────────────────────────────────────────────────────────────┐
-│ Strategy_Combo                                                    │
-│   ├─ BollMR_Enhanced                                              │
-│   │    ├─ TimeFilter ✓ (时间过滤)                                 │
-│   │    ├─ LongTrendOK ✓ (趋势判断)     ← 重复!                   │
-│   │    └─ VolatilityOK ✓ (波动率过滤)  ← 重复!                   │
-│   │                                                               │
-│   └─ TrendPullback                                               │
-│        ├─ IsInSession ✓ (时间过滤)     ← 重复实现!                │
-│        ├─ m_trend_state ✓ (趋势判断)   ← 重复!                   │
-│        └─ ATR 计算 ✓ (波动率)          ← 重复!                   │
-└──────────────────────────────────────────────────────────────────┘
-                              ↓
-┌──────────────────────────────────────────────────────────────────┐
-│ RegimeFilter (状态机)                                            │
-│   ├─ Q-Score ✓ (市场质量)                                        │
-│   ├─ ADX 判断 ✓ (趋势强度)            ← 第三次趋势判断!           │
-│   └─ ATR 百分位 ✓ (波动率状态)         ← 第三次波动率判断!        │
-└──────────────────────────────────────────────────────────────────┘
-                              ↓
-              信号被过度过滤 → 交易机会极少
-```
-
-**重复代码位置**：
-
-| 组件 | 重复功能 | 代码位置 |
-|------|----------|----------|
-| TrendPullback | 时间过滤 | 第854-921行（完全重复） |
-| BollMR/TrendPullback/Regime | 趋势判断 | 各自独立实现 |
-| BollMR/TrendPullback/Regime | 波动率计算 | ATR 计算了3次 |
-
----
-
-### 新架构：职业化过滤标准
+### 架构：职业化过滤标准
 
 **设计原则**：
+
 1. **单一职责**：每层只做一件事
 2. **状态统一**：RegimeFilter 是唯一状态来源
 3. **策略简化**：策略只做入场条件判断
 
-```
 信号流程（优化后 - 清晰）：
 ┌──────────────────────────────────────────────────────────────────┐
 │ Layer 1: RegimeFilter (全局状态)                                  │
@@ -116,7 +50,7 @@ Phase 5: 策略扩展 ⏳
 ### XAUUSD 职业化过滤标准
 
 ```
-黄金市场过滤层次（职业交易员标准）：
+黄金市场过滤层次：
 
 Layer 1: 市场状态（全局）
 ├── Q-Score > 0.35（市场质量达标）
@@ -277,7 +211,6 @@ baseline_fbr = f(volatility_state, session)
 ```
 
 ---
-
 ## 代码架构
 
 ### 目录结构
@@ -333,10 +266,14 @@ quant-ai-filters/
 | `RiskPipeline` | 风控管道 | 统一管理所有风控检查 |
 | `TradeExecutor` | 交易执行 | 封装 MT5 交易 API |
 
-### 数据流向（优化后）
+### 数据流向
 
 ```
 Ea_run.mq5 (OnTick)
+    ↓
+    ↓
+ManagePositionExitOnTick(signal); 
+    ↓
     ↓
 CRegimeFilter.Update()
     ↓ → Q_score, State, Direction, Volatility
@@ -472,39 +409,6 @@ Alpha因子 = 1
 信号 = Donchian突破 × 波动率扩张 × 趋势确认 × 斜率确认
 ```
 
----
-
-## M6-M8: 详细设计
-
-### M6: 架构清理
-
-#### M6.1 架构诊断
-
-| 任务 | 状态 | 说明 |
-|------|------|------|
-| M6.1.1 | ✅ | 分析双重过滤问题 |
-| M6.1.2 | ✅ | 识别重复代码 |
-| M6.1.3 | ✅ | 设计新架构方案 |
-
-#### M6.2 代码清理
-
-| 任务 | 状态 | 说明 |
-|------|------|------|
-| M6.2.1 | ⏳ | 删除 TrendPullback 重复时间过滤代码 |
-| M6.2.2 | ⏳ | 统一趋势枚举到 RegimeTypes.mqh |
-| M6.2.3 | ⏳ | 创建统一的 ITimeFilter 接口 |
-
-#### M6.3 架构重构
-
-| 任务 | 状态 | 说明 |
-|------|------|------|
-| M6.3.1 | ⏳ | RegimeFilter 集成到主循环 |
-| M6.3.2 | ⏳ | 策略层移除趋势判断逻辑 |
-| M6.3.3 | ⏳ | 策略层移除波动率判断逻辑 |
-| M6.3.4 | ⏳ | 验证重构后信号一致性 |
-
----
-
 ### M7: XAUUSD 职业化过滤
 
 #### 7.1 黄金市场特点
@@ -564,32 +468,6 @@ model = XGBRegressor(
 model.fit(X_train, y_train)
 importance = model.feature_importances_
 ```
-
----
-
-## 参数配置
-
-### Regime Filter 参数
-
-```
-Regime Filter 设置:
-├── RF_Q_Score_Standby = 0.35  # STANDBY 阈值
-├── RF_Q_Score_Active = 0.45   # ACTIVE 阈值
-├── RF_Transition_Bars = 3     # 过渡期 K 线数
-├── RF_Hysteresis = 0.05       # 滞后阈值
-└── RF_Enable_SubType = true   # 启用 Sub-Type
-
-市场质量设置:
-├── MQ_Efficiency_Period = 20
-├── MQ_Efficiency_Baseline = 0.10
-├── MQ_FBR_Baseline = 0.40
-├── MQ_ADX_Baseline = 25.0
-├── MQ_Weight_Eff = 0.25
-├── MQ_Weight_FBR = 0.25
-└── MQ_Weight_ADX = 0.20
-```
-
----
 
 ## 快速开始
 

@@ -56,6 +56,11 @@ public:
 
       return true;
    }
+
+   void PrintState(Signal &signal) const
+    {
+      Print("[EA] AIDecisionGateway rejected signal from ", signal.source);
+    }
 };
 
 #endif // __AI_DECISION_GATEWAY_MQH__
