@@ -679,42 +679,42 @@ void CheckNewEntry(string dir)
             LogPrint(LOG_NORMAL, "❌ RSI条件不满足， 无法开首单");
         }
     }
-    // else // 加仓逻辑
-    // {    
-    //     // 价格条件是否满足
-    //     bool priceCondition = false;
-    //     // 检查价格条件
-    //     double priceDiff = MathAbs(price - extreme);
+    else // 加仓逻辑
+    {    
+        // 价格条件是否满足
+        bool priceCondition = false;
+        // 检查价格条件
+        double priceDiff = MathAbs(price - extreme);
 
-    //     // 对于BUY篮子，价格下跌到极端价格以下才加仓
-    //     if(isBuy && price <= extreme - gStep) 
-    //     {
-    //         priceCondition = true;
-    //         if(IsNewBar())
-    //             PrintFormat("✅ 价格条件满足: %.2f ≤ %.2f - %.2f", price, extreme, gStep);
-    //     }
-    //     // 对于SELL篮子，价格上涨到极端价格以上才加仓
-    //     else if(!isBuy && price >= extreme + gStep) 
-    //     {
-    //         priceCondition = true;
-    //         if(IsNewBar())
-    //             PrintFormat("✅ 价格条件满足: %.2f ≥ %.2f + %.2f", price, extreme, gStep);
-    //     }
-    //     else
-    //     {   if(IsNewBar())
-    //             PrintFormat("❌ %s价格条件不满足: 价差=%.2f, 需要≥%.2f", 
-    //                     dir, priceDiff, gStep);
-    //     }
+        // 对于BUY篮子，价格下跌到极端价格以下才加仓
+        if(isBuy && price <= extreme - gStep) 
+        {
+            priceCondition = true;
+            if(IsNewBar())
+                PrintFormat("✅ 价格条件满足: %.2f ≤ %.2f - %.2f", price, extreme, gStep);
+        }
+        // 对于SELL篮子，价格上涨到极端价格以上才加仓
+        else if(!isBuy && price >= extreme + gStep) 
+        {
+            priceCondition = true;
+            if(IsNewBar())
+                PrintFormat("✅ 价格条件满足: %.2f ≥ %.2f + %.2f", price, extreme, gStep);
+        }
+        else
+        {   if(IsNewBar())
+                PrintFormat("❌ %s价格条件不满足: 价差=%.2f, 需要≥%.2f", 
+                        dir, priceDiff, gStep);
+        }
         
-    //     if(priceCondition) 
-    //     {
-    //         needOpen = true;
-    //         // 计算手数
-    //         lot = BaseLot * MathPow(LotMultiplier, basketCount);
-    //         if(IsNewBar())
-    //             PrintFormat("计算手数: %.2f * %.2f^%d = %.2f", BaseLot, LotMultiplier, basketCount, lot);
-    //     }
-    // }
+        if(priceCondition) 
+        {
+            needOpen = true;
+            // 计算手数
+            lot = BaseLot * MathPow(LotMultiplier, basketCount);
+            if(IsNewBar())
+                PrintFormat("计算手数: %.2f * %.2f^%d = %.2f", BaseLot, LotMultiplier, basketCount, lot);
+        }
+    }
 
     if(needOpen)
     {    

@@ -1,6 +1,7 @@
 //+------------------------------------------------------------------+
 //|                      Core/PositionCoordinator.mqh                |
-//|      只负责：记录当前 symbol 仓位方向 & 来源策略，做冲突仲裁       |
+//|      负责：记录当前 symbol 仓位方向 & 来源策略，做冲突仲裁       |
+//|            仓位盈亏追踪（支持多次部分平仓）                       |
 //+------------------------------------------------------------------+
 #ifndef __POSITION_COORDINATOR_MQH__
 #define __POSITION_COORDINATOR_MQH__
@@ -14,11 +15,78 @@ enum PositionSide
    POS_SHORT
 };
 
+// 仓位盈亏追踪器
+struct PositionTracker
+{
+   bool      active;           // 是否有活跃追踪
+   ulong     open_ticket;      // 开仓时的订单号
+   double    entry_price;      // 开仓均价
+   double    total_volume;     // 开仓总量
+   double    remaining_vol;    // 剩余仓量
+   long      direction;        // 方向: POSITION_TYPE_BUY/SELL
+   datetime  open_time;        // 开仓时间
+   string    source;           // 策略来源
+   
+   // 累计盈亏
+   double    total_profit;     // 累计盈亏
+   double    total_swap;       // 累计库存费
+   double    total_commission; // 累计手续费
+   double    total_net;        // 累计净盈亏
+   int       close_count;      // 平仓次数
+   
+   void Init(double entry, double vol, long dir, string src)
+   {
+      active = true;
+      open_ticket = 0;
+      entry_price = entry;
+      total_volume = vol;
+      remaining_vol = vol;
+      direction = dir;
+      open_time = TimeCurrent();
+      source = src;
+      total_profit = 0;
+      total_swap = 0;
+      total_commission = 0;
+      total_net = 0;
+      close_count = 0;
+   }
+   
+   void Reset()
+   {
+      active = false;
+      open_ticket = 0;
+      entry_price = 0;
+      total_volume = 0;
+      remaining_vol = 0;
+      direction = 0;
+      open_time = 0;
+      source = "";
+      total_profit = 0;
+      total_swap = 0;
+      total_commission = 0;
+      total_net = 0;
+      close_count = 0;
+   }
+   
+   void AddCloseResult(double profit, double swap, double comm, double vol)
+   {
+      total_profit += profit;
+      total_swap += swap;
+      total_commission += comm;
+      total_net += (profit + swap + comm);
+      remaining_vol -= vol;
+      close_count++;
+   }
+   
+   bool IsFullyClosed() const { return active && remaining_vol <= 0.0001; }
+};
+
 class PositionCoordinator
 {
 private:
    PositionSide current_side;
    string       current_source;   // 哪个策略开的仓
+   PositionTracker tracker;       // 仓位盈亏追踪器
 
 public:
    PositionCoordinator()
@@ -133,10 +201,83 @@ public:
       return PositionGetDouble(POSITION_PROFIT);
    }
 
-    void PrintState() const
-    {
-        Print("[PositionCoordinator] State: side=", current_side, " source=", current_source);
-    }
+   void PrintState() const
+   {
+      Print("[PositionCoordinator] State: side=", current_side, " source=", current_source);
+   }
+   
+   // ===== 仓位追踪器接口 =====
+   double GetTrackerNetProfit() const { return tracker.total_net; }
+   
+   // 初始化追踪器（开仓时调用）
+   void InitTracker(double entry, double vol, long dir, string src)
+   {
+      tracker.Init(entry, vol, dir, src);
+      tracker.open_ticket = PositionSelect(_Symbol) ? (ulong)PositionGetInteger(POSITION_TICKET) : 0;
+      Print("[仓位追踪] 开始追踪 | 方向: ", (dir==POSITION_TYPE_BUY?"BUY":"SELL"),
+            " | 入场: ", DoubleToString(tracker.entry_price, _Digits),
+            " | 总量: ", DoubleToString(tracker.total_volume, 2),
+            " | 来源: ", tracker.source);
+   }
+   
+   // 累加平仓结果
+   void AddCloseResult(double profit, double swap, double comm, double vol)
+   {
+      tracker.AddCloseResult(profit, swap, comm, vol);
+   }
+   
+   // 打印平仓信息
+   void PrintCloseResult(double this_profit, double this_vol)
+   {
+      string dir_str = (tracker.direction == POSITION_TYPE_BUY ? "BUY" : "SELL");
+      string profit_sign = (this_profit >= 0 ? "+" : "");
+      int elapsed = (int)(TimeCurrent() - tracker.open_time);
+      int hours = elapsed / 3600;
+      int mins = (elapsed % 3600) / 60;
+      
+      Print("[平仓#", tracker.close_count, "] ", dir_str,
+            " | 本次量: ", DoubleToString(this_vol, 2),
+            " | 本次盈亏: ", profit_sign, DoubleToString(this_profit, 2));
+      
+      if(tracker.IsFullyClosed())
+      {
+         string net_sign = (tracker.total_net >= 0 ? "+" : "");
+         Print("========== [仓位总结] ==========");
+         Print("  方向: ", dir_str, " | 来源: ", tracker.source);
+         Print("  开仓时间: ", TimeToString(tracker.open_time, TIME_DATE|TIME_MINUTES),
+               " | 平仓时间: ", TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES),
+               " | 持仓时长: ", hours, "h", mins, "m");
+         Print("  入场价: ", DoubleToString(tracker.entry_price, _Digits),
+               " | 总仓量: ", DoubleToString(tracker.total_volume, 2));
+         Print("  平仓次数: ", tracker.close_count,
+               " | 总盈亏: ", net_sign, DoubleToString(tracker.total_profit, 2),
+               " | 总库存费: ", DoubleToString(tracker.total_swap, 2),
+               " | 总手续费: ", DoubleToString(tracker.total_commission, 2));
+         Print("  ========== 净盈亏: ", net_sign, DoubleToString(tracker.total_net, 2), " ==========");
+      }
+      else
+      {
+         string net_sign = (tracker.total_net >= 0 ? "+" : "");
+         Print("[累计统计] 已平: ", DoubleToString(tracker.total_volume - tracker.remaining_vol, 2),
+               "/", DoubleToString(tracker.total_volume, 2),
+               " | 累计净盈亏: ", net_sign, DoubleToString(tracker.total_net, 2),
+               " | 剩余: ", DoubleToString(tracker.remaining_vol, 2));
+      }
+   }
+   
+   // 打印总体总结（完全平仓时）
+   void PrintFinalSummary()
+   {
+      string dir_str = (tracker.direction == POSITION_TYPE_BUY ? "BUY" : "SELL");
+      string net_sign = (tracker.total_net >= 0 ? "+" : "");
+      Print("========== [仓位总结] ==========");
+      Print("  方向: ", dir_str, " | 来源: ", tracker.source);
+      Print("  总盈亏: ", net_sign, DoubleToString(tracker.total_net, 2));
+   }
+   
+   void ResetTracker() { tracker.Reset(); }
+   bool IsTrackerActive() const { return tracker.active; }
+   bool IsTrackerFullyClosed() const { return tracker.IsFullyClosed(); }
 };
 
 #endif // __POSITION_COORDINATOR_MQH__

@@ -194,6 +194,132 @@ public:
               " 价格=", DoubleToString(trade.ResultPrice(), _Digits));
         return true;
     }
+    
+    // 修改止损
+    bool ModifySL(double new_sl, string source)
+    {
+        if(!PositionSelect(_Symbol))
+        {
+            Print("[", source, "] 修改止损失败：无持仓");
+            return false;
+        }
+        
+        ulong ticket = PositionGetInteger(POSITION_TICKET);
+        double cur_sl = PositionGetDouble(POSITION_SL);
+        double cur_tp = PositionGetDouble(POSITION_TP);
+        long type = PositionGetInteger(POSITION_TYPE);
+        double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+        
+        // 检查新止损是否有效
+        if(new_sl <= 0)
+        {
+            Print("[", source, "] 修改止损失败：无效止损价 ", DoubleToString(new_sl, _Digits));
+            return false;
+        }
+        
+        // 检查止损是否朝有利方向移动（保护性止损只能往盈利方向移）
+        bool is_buy = (type == POSITION_TYPE_BUY);
+        bool is_improving = is_buy ? (new_sl > cur_sl) : (new_sl < cur_sl);
+        
+        if(!is_improving)
+        {
+            Print("[", source, "] 修改止损跳过：止损未改善 cur_sl=", 
+                  DoubleToString(cur_sl, _Digits), " new_sl=", DoubleToString(new_sl, _Digits));
+            return false;
+        }
+        
+        // 检查止损距离限制
+        long stops = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+        double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+        double min_dist = stops * point;
+        double current_price = is_buy ? SymbolInfoDouble(_Symbol, SYMBOL_BID) 
+                                       : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+        
+        if(is_buy && (current_price - new_sl) < min_dist)
+        {
+            Print("[", source, "] 修改止损失败：止损距离不足 min_dist=", 
+                  DoubleToString(min_dist, _Digits));
+            return false;
+        }
+        else if(!is_buy && (new_sl - current_price) < min_dist)
+        {
+            Print("[", source, "] 修改止损失败：止损距离不足 min_dist=", 
+                  DoubleToString(min_dist, _Digits));
+            return false;
+        }
+        
+        // 执行修改
+        bool ok = trade.PositionModify(ticket, new_sl, cur_tp);
+        if(!ok)
+        {
+            int err = GetLastError();
+            Print("[", source, "] 修改止损失败",
+                  " ticket=", ticket,
+                  " 方向=", (is_buy ? "BUY" : "SELL"),
+                  " 旧SL=", DoubleToString(cur_sl, _Digits),
+                  " 新SL=", DoubleToString(new_sl, _Digits),
+                  " retcode=", trade.ResultRetcode(),
+                  " 描述=", trade.ResultRetcodeDescription(),
+                  " err=", err);
+            return false;
+        }
+        
+        Print("[", source, "] 修改止损成功",
+              " ticket=", ticket,
+              " 方向=", (is_buy ? "BUY" : "SELL"),
+              " 开仓价=", DoubleToString(open_price, _Digits),
+              " 旧SL=", DoubleToString(cur_sl, _Digits),
+              " 新SL=", DoubleToString(new_sl, _Digits),
+              " 移动=", DoubleToString(MathAbs(new_sl - cur_sl), _Digits), "点");
+        return true;
+    }
+    
+    // 修改止盈
+    bool ModifyTP(double new_tp, string source)
+    {
+        if(!PositionSelect(_Symbol))
+        {
+            Print("[", source, "] 修改止盈失败：无持仓");
+            return false;
+        }
+        
+        ulong ticket = PositionGetInteger(POSITION_TICKET);
+        double cur_sl = PositionGetDouble(POSITION_SL);
+        double cur_tp = PositionGetDouble(POSITION_TP);
+        long type = PositionGetInteger(POSITION_TYPE);
+        double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+        
+        if(new_tp <= 0)
+        {
+            Print("[", source, "] 修改止盈失败：无效止盈价 ", DoubleToString(new_tp, _Digits));
+            return false;
+        }
+        
+        bool is_buy = (type == POSITION_TYPE_BUY);
+        
+        // 执行修改
+        bool ok = trade.PositionModify(ticket, cur_sl, new_tp);
+        if(!ok)
+        {
+            int err = GetLastError();
+            Print("[", source, "] 修改止盈失败",
+                  " ticket=", ticket,
+                  " 方向=", (is_buy ? "BUY" : "SELL"),
+                  " 旧TP=", DoubleToString(cur_tp, _Digits),
+                  " 新TP=", DoubleToString(new_tp, _Digits),
+                  " retcode=", trade.ResultRetcode(),
+                  " 描述=", trade.ResultRetcodeDescription(),
+                  " err=", err);
+            return false;
+        }
+        
+        Print("[", source, "] 修改止盈成功",
+              " ticket=", ticket,
+              " 方向=", (is_buy ? "BUY" : "SELL"),
+              " 旧TP=", DoubleToString(cur_tp, _Digits),
+              " 新TP=", DoubleToString(new_tp, _Digits));
+        return true;
+    }
 };
 
 #endif// __TRADE_EXECUTOR_MQH__

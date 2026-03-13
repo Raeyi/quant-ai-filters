@@ -297,6 +297,127 @@ public:
     {
         return losing_guard.GetLosingStreak();
     }
+    
+    // 验证修改止损请求
+    bool ValidateModifySL(const Signal &signal, TradeRequest &req)
+    {
+        block_reason = "";
+        
+        // 必须有持仓
+        if(!PositionSelect(_Symbol))
+        {
+            block_reason = "无持仓";
+            return false;
+        }
+        
+        // 验证新止损价
+        if(signal.new_sl <= 0)
+        {
+            block_reason = "无效止损价";
+            return false;
+        }
+        
+        long pos_type = PositionGetInteger(POSITION_TYPE);
+        double cur_sl = PositionGetDouble(POSITION_SL);
+        double cur_tp = PositionGetDouble(POSITION_TP);
+        bool is_buy = (pos_type == POSITION_TYPE_BUY);
+        
+        // 止损只能朝有利方向移动（保护性止损规则）
+        bool is_improving = is_buy ? (signal.new_sl > cur_sl) : (signal.new_sl < cur_sl);
+        if(!is_improving && cur_sl > 0)  // cur_sl=0 表示之前没有止损
+        {
+            block_reason = "止损未改善（保护性止损规则）";
+            Print("[RiskPipeline] 修改止损被拒：", block_reason,
+                  " cur_sl=", DoubleToString(cur_sl, _Digits),
+                  " new_sl=", DoubleToString(signal.new_sl, _Digits));
+            return false;
+        }
+        
+        // 检查止损距离限制
+        long stops = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+        double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+        double min_dist = stops * point;
+        double current_price = is_buy ? SymbolInfoDouble(_Symbol, SYMBOL_BID) 
+                                       : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+        
+        if(is_buy && (current_price - signal.new_sl) < min_dist)
+        {
+            block_reason = "止损距离不足";
+            Print("[RiskPipeline] 修改止损被拒：", block_reason);
+            return false;
+        }
+        else if(!is_buy && (signal.new_sl - current_price) < min_dist)
+        {
+            block_reason = "止损距离不足";
+            Print("[RiskPipeline] 修改止损被拒：", block_reason);
+            return false;
+        }
+        
+        // 检查止损不能穿过当前价格
+        if(is_buy && signal.new_sl >= current_price)
+        {
+            block_reason = "止损价高于当前价格";
+            return false;
+        }
+        else if(!is_buy && signal.new_sl <= current_price)
+        {
+            block_reason = "止损价低于当前价格";
+            return false;
+        }
+        
+        // 构建请求
+        req.action = ACTION_MODIFY_SL;
+        req.new_sl = NormalizeDouble(signal.new_sl, _Digits);
+        req.ticket = PositionGetInteger(POSITION_TICKET);
+        req.source = signal.source;
+        
+        Print("[RiskPipeline] 修改止损验证通过: new_sl=", DoubleToString(req.new_sl, _Digits));
+        return true;
+    }
+    
+    // 验证修改止盈请求
+    bool ValidateModifyTP(const Signal &signal, TradeRequest &req)
+    {
+        block_reason = "";
+        
+        if(!PositionSelect(_Symbol))
+        {
+            block_reason = "无持仓";
+            return false;
+        }
+        
+        if(signal.new_tp <= 0)
+        {
+            block_reason = "无效止盈价";
+            return false;
+        }
+        
+        long pos_type = PositionGetInteger(POSITION_TYPE);
+        double cur_sl = PositionGetDouble(POSITION_SL);
+        bool is_buy = (pos_type == POSITION_TYPE_BUY);
+        double current_price = is_buy ? SymbolInfoDouble(_Symbol, SYMBOL_BID) 
+                                       : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+        
+        // 止盈必须在合理位置
+        if(is_buy && signal.new_tp <= current_price)
+        {
+            block_reason = "止盈价低于当前价格";
+            return false;
+        }
+        else if(!is_buy && signal.new_tp >= current_price)
+        {
+            block_reason = "止盈价高于当前价格";
+            return false;
+        }
+        
+        req.action = ACTION_MODIFY_TP;
+        req.new_tp = NormalizeDouble(signal.new_tp, _Digits);
+        req.ticket = PositionGetInteger(POSITION_TICKET);
+        req.source = signal.source;
+        
+        Print("[RiskPipeline] 修改止盈验证通过: new_tp=", DoubleToString(req.new_tp, _Digits));
+        return true;
+    }
 
     bool ShouldClosePosition(const Signal &signal)
     {

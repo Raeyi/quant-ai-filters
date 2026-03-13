@@ -1,0 +1,61 @@
+; SMC Trading Helper - 黄金(XAUUSD) M1剥头皮参数
+; 适用于MetaTrader 5 指标参数配置
+; 创建日期: 2026-03-12
+; 说明: M1超短线，高频交易，适合波动活跃时段
+
+; ============================================
+; 周期设置 - M1剥头皮
+; ============================================
+HigherTimeframe=M5
+LowerTimeframe=M1
+UseMultiTimeframe=true
+RangingMode=true
+
+; ============================================
+; 通用设置
+; ============================================
+LookBackPeriod=100
+SwingPeriod=2
+LiquidityAreaOpacity=0.1
+
+; ============================================
+; 显示开关 - 保持图表干净
+; ============================================
+ShowEntrySignals=true
+ShowLiquidityLines=false
+ShowLiquidityZones=false
+ShowOrderBlocks=false
+ShowFVG=false
+ShowLiquidityGrab=true
+MaxSignalsToShow=5
+
+; ============================================
+; 颜色设置
+; ============================================
+BullishColor=65280
+BearishColor=255
+
+; ============================================
+; FVG设置 - 黄金M1适配（更小阈值）
+; ============================================
+FVG_Period=2
+FVG_Min_Points=30.0
+FVG_Bars_Extends=20
+
+; ============================================
+; PinBar设置 - 黄金M1适配
+; ============================================
+PinBar_ShadowToBody=1.8
+PinBar_LookBack=15
+
+; ============================================
+; 流动性猎杀设置 - 黄金M1适配
+; ============================================
+LiquidityGrab_Deviation_Points=80.0
+LiquidityGrab_LookForward=3
+
+; ============================================
+; 订单区块设置 - 黄金M1适配
+; ============================================
+OrderBlock_Width_Bars=10
+Impulse_Bars_Count=2

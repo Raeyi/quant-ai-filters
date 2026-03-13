@@ -140,7 +140,7 @@ public:
       y      = 10;
       line   = 15;
       panel_width  = 320;
-      panel_height = 330;  // 增加高度以容纳Regime和冷却状态行
+      panel_height = 345;  // 增加高度以容纳Regime、冷却状态和点差行
       panel_border_color = clrDodgerBlue;
       panel_bg_color = clrBlack;
       font_size = 9;
@@ -173,6 +173,7 @@ public:
       CreateLabel("NO_TRADE",     line * i++);
       CreateLabel("TIME_FILTER",  line * i++);
       CreateLabel("COOLDOWN",     line * i++);  // 结构冷却器状态
+      CreateLabel("SPREAD",       line * i++);  // 实时点差
       CreateLabel("STATUS",       line * i++);
       CreateLabel("RISK_STATUS",  line * i++);
    }
@@ -271,6 +272,13 @@ public:
          cooldown_text += ")";
       }
       SetText("COOLDOWN", cooldown_text, structural_cooldown_active ? clrOrange : clrLime);
+
+      // 实时点差显示
+      double spread = (double)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+      double spreadPoints = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      int spreadInt = (int)(spreadPoints / _Point);
+      color spreadColor = (spreadInt <= 30) ? clrLime : (spreadInt <= 50) ? clrOrange : clrRed;
+      SetText("SPREAD", "点差: " + IntegerToString(spreadInt) + " points", spreadColor);
 
       string status = "等待信号";
       color status_color = clrWhite;

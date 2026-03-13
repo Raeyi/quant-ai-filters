@@ -19,6 +19,7 @@ input int     Regime_ATR_Period = 14;            // ATR 周期
 input int     Regime_Vol_Lookback = 100;         // 波动率百分位窗口
 input double  Regime_Vol_Low_Percentile = 25.0;  // 低波动百分位
 input double  Regime_Vol_High_Percentile = 75.0; // 高波动百分位
+input double  Regime_Trend_Strength_Threshold = 0.45; // 趋势强度阈值 (0.4~0.6)
 
 //+------------------------------------------------------------------+
 //| Regime 指标类                                                      |
@@ -193,11 +194,31 @@ public:
     }
     
     //+--------------------------------------------------------------
-    //| 计算趋势强度
+    //| 计算趋势强度（多因子综合）
+    //| 权重：ADX 30%, 效率比率 40%, 价格斜率 30%
     //+--------------------------------------------------------------
     double CalculateTrendStrength(double adx)
     {
-        // 分段线性映射 ADX 到 [0, 1]
+        // 1. ADX 分数 (权重 0.3)
+        double adx_score = NormalizeADX(adx);
+        
+        // 2. 效率比率 ER (权重 0.4)
+        double er_score = CalculateEfficiencyRatio(14);
+        
+        // 3. 价格斜率 (权重 0.3)
+        double slope_score = CalculateSlopeScore(10);
+        
+        // 综合分数
+        double combined = adx_score * 0.3 + er_score * 0.4 + slope_score * 0.3;
+        
+        return combined;
+    }
+    
+    //+--------------------------------------------------------------
+    //| ADX 归一化 [0, 1]
+    //+--------------------------------------------------------------
+    double NormalizeADX(double adx)
+    {
         if(adx < 20)
             return adx / 100.0;  // 0 ~ 0.2
         else if(adx < 25)
@@ -206,6 +227,68 @@ public:
             return 0.4 + (adx - 25) * 0.02;  // 0.4 ~ 0.7
         else
             return MathMin(0.7 + (adx - 40) * 0.01, 1.0);  // 0.7 ~ 1.0
+    }
+    
+    //+--------------------------------------------------------------
+    //| 效率比率 ER (Kaufman Efficiency Ratio)
+    //| 高 = 趋势流畅, 低 = 震荡
+    //| 使用已完成K线(shift=1)避免tick级别波动
+    //+--------------------------------------------------------------
+    double CalculateEfficiencyRatio(int period)
+    {
+        double close0 = iClose(_Symbol, _Period, 1);
+        double closeN = iClose(_Symbol, _Period, period + 1);
+        
+        // 净变动
+        double net_change = MathAbs(close0 - closeN);
+        
+        // 总波幅
+        double total_change = 0.0;
+        for(int i = 1; i <= period; i++)
+        {
+            double c1 = iClose(_Symbol, _Period, i);
+            double c2 = iClose(_Symbol, _Period, i + 1);
+            total_change += MathAbs(c1 - c2);
+        }
+        
+        if(total_change < 0.0001)
+            return 0.0;
+        
+        return MathMin(net_change / total_change, 1.0);
+    }
+    
+    //+--------------------------------------------------------------
+    //| 价格斜率分数 [0, 1]
+    //| 基于 MA 斜率和方向一致性
+    //| 使用已完成K线(shift=1)避免tick级别波动
+    //+--------------------------------------------------------------
+    double CalculateSlopeScore(int period)
+    {
+        // 计算收盘价线性回归斜率（从shift=1开始）
+        double sum_x = 0, sum_y = 0, sum_xy = 0, sum_x2 = 0;
+        int n = period;
+        
+        for(int i = 0; i < n; i++)
+        {
+            double y = iClose(_Symbol, _Period, i + 1);  // shift从1开始
+            sum_x += i;
+            sum_y += y;
+            sum_xy += i * y;
+            sum_x2 += i * i;
+        }
+        
+        double slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x);
+        
+        // 归一化斜率到 [0, 1]
+        // 使用 ATR 作为基准
+        double atr = m_atr_buffer[0];
+        if(atr < 0.0001) atr = 0.001;
+        
+        // 斜率绝对值归一化
+        double normalized_slope = MathAbs(slope) * period / atr;
+        
+        // 映射到 [0, 1]: 0 = 无斜率, 1 = 强斜率
+        return MathMin(normalized_slope / 5.0, 1.0);  // 5根K线移动超过5倍ATR为满分
     }
     
     //+--------------------------------------------------------------
@@ -283,7 +366,7 @@ public:
     //+--------------------------------------------------------------
     RegimeType GetRegimeType() const
     {
-        return (m_trend_strength > 0.4) ? REGIME_TREND : REGIME_RANGE;
+        return (m_trend_strength > Regime_Trend_Strength_Threshold) ? REGIME_TREND : REGIME_RANGE;
     }
 };
 

@@ -44,7 +44,8 @@ private:
     RegimeState     m_current_state;
     int             m_transition_counter;
     double          m_last_q_score;
-    
+    datetime        m_last_subtype_bar_time;  // 上次更新sub_type的K线时间
+
     // 当前快照
     RegimeSnapshot  m_snapshot;
     
@@ -64,6 +65,7 @@ public:
         m_current_state(STATE_STANDBY),
         m_transition_counter(0),
         m_last_q_score(0.5),
+        m_last_subtype_bar_time(0),
         m_state_history_count(0)
     {
     }
@@ -106,8 +108,11 @@ public:
         // 获取 ADX 值
         double adx = m_indicators.GetADX();
         
-        // 更新质量（传入 ADX）
-        if(!m_quality.Update(close, high, low, adx))
+        // 获取K线时间（用于检测新K线）
+        datetime bar_time = iTime(_Symbol, _Period, 1);
+        
+        // 更新质量（传入 ADX 和 K线时间）
+        if(!m_quality.Update(close, high, low, adx, bar_time))
             return false;
         
         // M7: 更新时段质量
@@ -242,12 +247,17 @@ public:
         m_snapshot.efficiency = m_quality.GetEfficiency();
         m_snapshot.false_breakout_rate = m_quality.GetFalseBreakoutRate();
         m_snapshot.q_score = m_quality.GetQScore();
-        
-        // Sub-Type 分类
+
+        // Sub-Type 分类（只在新K线时更新，保持单根K线内稳定）
         if(m_enable_subtype)
         {
-            m_snapshot.sub_type = ClassifySubType();
-            ApplySubTypeParams();
+            datetime current_bar_time = iTime(_Symbol, _Period, 1);
+            if(current_bar_time != m_last_subtype_bar_time)
+            {
+                m_snapshot.sub_type = ClassifySubType();
+                m_last_subtype_bar_time = current_bar_time;
+                ApplySubTypeParams();
+            }
         }
     }
     
@@ -297,7 +307,8 @@ public:
     void ApplySubTypeParams()
     {
         switch(m_snapshot.sub_type)
-        {
+        {   
+            // 真趋势
             case SUBTYPE_TVB_TREND:
                 m_snapshot.scale_multiplier = 1.2;
                 m_snapshot.sl_multiplier = 1.5;
@@ -305,7 +316,7 @@ public:
                 m_snapshot.max_positions = 2;
                 m_snapshot.risk_level = RISK_MEDIUM;
                 break;
-                
+            // 情绪脉冲
             case SUBTYPE_TVA_EMOTION:
                 m_snapshot.scale_multiplier = 0.6;
                 m_snapshot.sl_multiplier = 0.8;
@@ -313,7 +324,7 @@ public:
                 m_snapshot.max_positions = 1;
                 m_snapshot.risk_level = RISK_HIGH;
                 break;
-                
+            // 温和趋势
             case SUBTYPE_TN_MILD:
                 m_snapshot.scale_multiplier = 0.8;
                 m_snapshot.sl_multiplier = 1.2;
@@ -321,7 +332,7 @@ public:
                 m_snapshot.max_positions = 2;
                 m_snapshot.risk_level = RISK_MEDIUM;
                 break;
-                
+            // 正常震荡
             case SUBTYPE_RN_NORMAL:
                 m_snapshot.scale_multiplier = 1.0;
                 m_snapshot.sl_multiplier = 1.0;
@@ -329,7 +340,7 @@ public:
                 m_snapshot.max_positions = 2;
                 m_snapshot.risk_level = RISK_LOW;
                 break;
-                
+            // 假突破密集
             case SUBTYPE_RVB_FALSE:
                 m_snapshot.scale_multiplier = 0.5;
                 m_snapshot.sl_multiplier = 1.2;
@@ -337,7 +348,7 @@ public:
                 m_snapshot.max_positions = 1;
                 m_snapshot.risk_level = RISK_MEDIUM;
                 break;
-                
+            // 消息震荡
             case SUBTYPE_RVA_NEWS:
                 m_snapshot.scale_multiplier = 0.2;
                 m_snapshot.sl_multiplier = 1.5;
@@ -345,7 +356,7 @@ public:
                 m_snapshot.max_positions = 1;
                 m_snapshot.risk_level = RISK_EXTREME;
                 break;
-                
+            // 低波动震荡
             case SUBTYPE_RL_LOW:
                 m_snapshot.scale_multiplier = 0.3;
                 m_snapshot.sl_multiplier = 0.8;
@@ -353,7 +364,7 @@ public:
                 m_snapshot.max_positions = 1;
                 m_snapshot.risk_level = RISK_LOW;
                 break;
-                
+            // 未知类型
             default:
                 m_snapshot.scale_multiplier = 0.5;
                 m_snapshot.sl_multiplier = 1.0;

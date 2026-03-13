@@ -1,0 +1,61 @@
+; SMC Trading Helper - 黄金(XAUUSD) M15短线交易参数
+; 适用于MetaTrader 5 指标参数配置
+; 创建日期: 2026-03-12
+; 说明: M15中等周期，信号更稳定，适合趋势行情
+
+; ============================================
+; 周期设置 - M15短线交易
+; ============================================
+HigherTimeframe=H4
+LowerTimeframe=M15
+UseMultiTimeframe=true
+RangingMode=false
+
+; ============================================
+; 通用设置
+; ============================================
+LookBackPeriod=200
+SwingPeriod=5
+LiquidityAreaOpacity=0.2
+
+; ============================================
+; 显示开关 - 保持图表干净
+; ============================================
+ShowEntrySignals=true
+ShowLiquidityLines=false
+ShowLiquidityZones=false
+ShowOrderBlocks=false
+ShowFVG=false
+ShowLiquidityGrab=true
+MaxSignalsToShow=3
+
+; ============================================
+; 颜色设置
+; ============================================
+BullishColor=65280
+BearishColor=255
+
+; ============================================
+; FVG设置 - 黄金M15适配
+; ============================================
+FVG_Period=3
+FVG_Min_Points=80.0
+FVG_Bars_Extends=40
+
+; ============================================
+; PinBar设置 - 黄金M15适配
+; ============================================
+PinBar_ShadowToBody=2.5
+PinBar_LookBack=25
+
+; ============================================
+; 流动性猎杀设置 - 黄金M15适配
+; ============================================
+LiquidityGrab_Deviation_Points=200.0
+LiquidityGrab_LookForward=5
+
+; ============================================
+; 订单区块设置 - 黄金M15适配
+; ============================================
+OrderBlock_Width_Bars=20
+Impulse_Bars_Count=3

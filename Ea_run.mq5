@@ -36,6 +36,7 @@
 #include "Strategies/Strategy_TrendPullback.mqh"
 #include "Strategies/Strategy_DonchianBreakout.mqh"
 #include "Strategies/Strategy_Combo.mqh"
+#include "Strategies/Strategy_SmartMoney.mqh"
 
 // 执行 & 风控
 #include "Core/TradeExecutor.mqh"
@@ -68,6 +69,7 @@ Strategy_BollMR_RSI_Time boll_rsi_time; // Bollinger 均值回归策略（RSI + 
 Strategy_TrendPullback trend_pullback; // 趋势回撤策略 (M4)
 Strategy_DonchianBreakout donchian_breakout; // Donchian 突破策略 (M9)
 Strategy_Combo combo;                  // 组合策略
+Strategy_SmartMoney smart_money;       // 聪明钱策略 (SMC)
 
 TradeExecutor       executor; // 交易执行器
 RiskPipeline        risk_pipeline; // 风控管道
@@ -175,6 +177,7 @@ int OnInit()
    registry.Register("rsi_time", &boll_rsi_time);
    registry.Register("trend_pullback", &trend_pullback);
    registry.Register("donchian", &donchian_breakout);
+   registry.Register("smart_money", &smart_money);
    
    // 注册组合策略的子策略（标记为 combo_child）
    registry.Register("boll_enhanced_child", &boll_enhanced, true);
@@ -211,6 +214,15 @@ int OnInit()
    
    // 4. 添加到策略管理器
    manager.Add(registry.GetPrimary());
+   
+   // 添加 SMC 策略（独立运行，不受 regime 过滤）
+   if(!smart_money.Init())
+   {
+      Print("Failed to initialize SmartMoney strategy");
+      return INIT_FAILED;
+   }
+   smart_money.SetRegimeFilter(&regime_filter);  // 注入但不强制过滤
+   manager.Add(&smart_money);
    
    // M6.3: 注入 RegimeFilter 到所有策略（消除策略层趋势判断）
    registry.SetRegimeFilterForAll(&regime_filter);
@@ -289,174 +301,376 @@ int OnInit()
    return INIT_SUCCEEDED;
 }
 
-//---------------- Tick 驱动 ----------------
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
 void OnTick()
 {
-   
+   // 1. 初始化与数据准备
    Signal signal;
    RegimeState regime_state = regime_filter.GetState();
 
-   // 指标数据更新
-   if(!registry.UpdateIndicators())
+   // 2. 数据更新与前置检查
+   if(!PreUpdateChecks(regime_state))
       return;
 
-   // 更新 Regime Filter 状态
+   // 2.1 在 PreUpdateChecks 之后获取 sub_type，确保与策略内部检查一致
+   RegimeSubType sub_type = regime_filter.GetSubType();
+
+   // 3. Tick级别退出检查（每个tick都执行，实时监控出场机会）
+   if(pos_coord.HasPosition())
+   {
+      // 必须调用 GetSignal 来获取退出信号，而不是使用空的 signal
+      signal = manager.GetSignal();
+      
+      bool should_close = risk_pipeline.ShouldClosePosition(signal);
+      if(should_close)
+         ManagePositionExit(signal, regime_state);
+      
+      UpdateStatusPanel(); // 每个tick都更新一次
+   }
+   
+   // 3.1 SMC 策略 Tick 级别检查（每个 tick 都执行）
+   // SMC 策略需要 tick 级别检查 HTF zone 和 LTF 入场
+   Signal smc_signal = smart_money.TickCheck();
+   if(smc_signal.type != SIGNAL_NONE)
+   {
+      ProcessSignal(smc_signal, regime_state, sub_type);
+   }
+
+   // 4. 新K线逻辑（入场信号等）
+   if(IsNewBar())
+   {
+      ProcessNewBarLogic(signal, regime_state, sub_type);
+   }
+
+   // 5. 最终状态更新
+   UpdateStatusPanel(); // 仅在Tick结束前更新一次
+}
+
+//+------------------------------------------------------------------+
+//| 前置检查：指标更新、Regime状态、时间周期有效性                   |
+//+------------------------------------------------------------------+
+bool PreUpdateChecks(RegimeState &regime_state)
+{
+   // 更新指标数据
+   if(!registry.UpdateIndicators())
+      return false;
+   
+   // 更新Regime状态
    double close = iClose(_Symbol, _Period, 1);
    double high = iHigh(_Symbol, _Period, 1);
    double low = iLow(_Symbol, _Period, 1);
    if(!regime_filter.Update(close, high, low))
    {
       Print("[EA] RegimeFilter update failed");
+      return false;
    }
-
+   regime_state = regime_filter.GetState(); // 刷新状态
+   
+   // 检查时间周期有效性
    if(!g_period_valid && DisableOnTimeframeChange)
-   {
-      UpdateStatusPanel();
-      return;
-   }
+      return false;
+   
+   return true;
+}
 
-   UpdateStatusPanel();
-
-   // 只在新 bar 上执行一次, 避免重复计算
-   if(!IsNewBar())
-      return;
-
-   // 检查 Regime Filter 状态
-   bool regime_active = (regime_state == STATE_ACTIVE);
+//+------------------------------------------------------------------+
+//| 新K线核心业务逻辑（入场信号）
+//+------------------------------------------------------------------+
+void ProcessNewBarLogic(Signal &signal, RegimeState regime_state, RegimeSubType sub_type)
+{
+   // 仓位同步
+   pos_coord.SyncFromTerminal();
 
    // 获取信号
    signal = manager.GetSignal();
 
-   // 管理仓位
-   ManagePositionExitOnBar(signal, regime_state);
-
-   // 同步仓位状态
-   pos_coord.SyncFromTerminal();
-
-   UpdateStatusPanel();
-
+   // Regime状态过滤（非活跃状态仅允许平仓）
+   bool regime_active = (regime_state == STATE_ACTIVE);
    if(!regime_active)
-   {  
-      // 如果当前信号不是平仓信号，就过滤掉（如果是平仓信号则放行，允许在非 ACTIVE 状态下平仓）
-      if(signal.type != SIGNAL_EXIT)
-      {
-         signal.type = SIGNAL_NONE;
-         signal.source = "";  // 清空 source，表示信号被过滤
-      }
-      // Regime Filter 状态调试输出 - 只在新 bar 上打印一次
+   {
+      FilterNonExitSignals(signal);
       regime_filter.PrintState();
       return;
    }
+   regime_filter.PrintState(); // 活跃状态打印调试信息
    
-   // Regime Filter 状态调试输出
-   regime_filter.PrintState();
-
-   // 风控管道
-   // 通知 RiskPipeline 新K线（用于冷却器计时）
-   risk_pipeline.OnNewBar();
-
-   // 检查是否跳过当前 K 线（冷却器）
-   if (!risk_pipeline.IsCheckGapOk())
-   {
+   // 风控管道检查（冷却器等）
+   if(!RiskPipelineChecks())
       return;
-   }
+   
+   // 信号分发处理
+   ProcessSignal(signal, regime_state, sub_type);
+}
 
-   // 更新结构冷却器状态（检查是否可以解除冷却）
+//+------------------------------------------------------------------+
+//| 风控管道检查（冷却器、结构冷却等）                               |
+//+------------------------------------------------------------------+
+bool RiskPipelineChecks()
+{
+   risk_pipeline.OnNewBar(); // 通知新K线
+   
+   // 检查冷却器是否允许交易
+   if(!risk_pipeline.IsCheckGapOk())
+      return false;
+   
+   // 处理结构冷却器
    if(risk_pipeline.IsStructuralCooldownActive())
    {
-      double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double atr = 0;
-      double structurePrice = 0;
-      
-      // trend_pullback 或 combo 模式需要获取结构价格
-      string variant = registry.GetVariant();
-      if(variant == "trend_pullback" || variant == "combo")
-      {
-         atr = trend_pullback.GetCurrentATR();
-         structurePrice = trend_pullback.GetCurrentStructurePrice();
-      }
-      
-      if(atr > 0)
-         risk_pipeline.UpdateCooldownState(price, atr, structurePrice);
-      
-      return; // 冷却中不执行后续逻辑
+      UpdateStructuralCooldown();
+      return false;
    }
+   
+   return true;
+}
 
-   UpdateStatusPanel();
-
-   // 如果有开仓, 加仓信号
-   if(signal.type == SIGNAL_BUY || signal.type == SIGNAL_SELL || signal.type == SIGNAL_ADD_LONG || signal.type == SIGNAL_ADD_SHORT)
+//+------------------------------------------------------------------+
+//| 更新结构冷却器状态                                               |
+//+------------------------------------------------------------------+
+void UpdateStructuralCooldown()
+{
+   double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double atr = 0;
+   double structurePrice = 0;
+   
+   string variant = registry.GetVariant();
+   if(variant == "trend_pullback" || variant == "combo")
    {
-      Print("[EA] Processing opening signal. type=", signal.type, " source=", signal.source);
-      if(!pos_coord.AllowSignal(signal))
-      {
-         pos_coord.PrintState();
-         return;
-      }
-      else
-      {
-         // AI 决策网关过滤
-         double ai_score = 1.0;
-         if(!ai_gateway.Pass(signal, ai_score))
-         {
-            ai_gateway.PrintState(signal);
-            return; // 不通过则过滤
-         }
-         else
-         {
-            // 风控构建 TradeRequest
-            TradeRequest req;
-            if(risk_pipeline.BuildTrade(signal, req))
-            {
-               Print("[EA] BuildTrade OK. dir=",
-                     (req.direction==TRADE_BUY?"BUY":"SELL"),
-                     " vol=", DoubleToString(req.volume,2),
-                     " sl=", DoubleToString(req.sl,_Digits),
-                     " tp=", DoubleToString(req.tp,_Digits));
-
-               // 执行下单
-               if(executor.Execute(req, signal.source))
-               {
-                  Print("[EA] Order executed.");
-                  if(AlertOnOrderOpen)
-                     Alert("开仓成功: ", _Symbol, " ", (req.direction==TRADE_BUY?"BUY":"SELL"),
-                           " vol=", DoubleToString(req.volume,2));
-                  risk_pipeline.OnTradeExecuted(signal);
-                  pos_coord.OnPositionOpened(signal);
-                  RecordSignal(signal.type, signal.source, regime_state); 
-                  RecordFeatures(signal.type, signal.source, regime_state);
-                  signal.type = SIGNAL_NONE; // 清空信号类型，防止后续重复处理
-               }
-               else
-               {
-                  if(AlertOnOrderFail)
-                  {
-                     RecordSignal(signal.type, signal.source, regime_state); 
-                     RecordFeatures(signal.type, signal.source, regime_state);
-                     signal.type = SIGNAL_NONE; // 清空信号类型，防止后续重复处理
-                     Alert("开仓失败: ", _Symbol, " ", (req.direction==TRADE_BUY?"BUY":"SELL"));
-                  }
-               }
-            }
-            else
-            {
-               string sig_dir = (signal.type==SIGNAL_BUY ? "BUY" :
-                                 (signal.type==SIGNAL_SELL ? "SELL" : "OTHER"));
-               RecordSignal(signal.type, signal.source, regime_state); 
-               RecordFeatures(signal.type, signal.source, regime_state);
-               signal.type = SIGNAL_NONE; // 清空信号类型，防止后续重复处理         
-               Print("[EA] BuildTrade failed. source=", signal.source,
-                     " dir=", sig_dir,
-                     " price=", DoubleToString(signal.price,_Digits),
-                     " sl=", DoubleToString(signal.sl,_Digits),
-                     " tp=", DoubleToString(signal.tp,_Digits),
-                     " reason=", risk_pipeline.GetBlockReason());
-            }
-         }
-      }
+      atr = trend_pullback.GetCurrentATR();
+      structurePrice = trend_pullback.GetCurrentStructurePrice();
    }
+   
+   if(atr > 0)
+      risk_pipeline.UpdateCooldownState(price, atr, structurePrice);
+}
 
-   UpdateStatusPanel();
+//+------------------------------------------------------------------+
+//| 过滤非平仓信号（仅在Regime非活跃时调用）                         |
+//+------------------------------------------------------------------+
+void FilterNonExitSignals(Signal &signal)
+{
+   // SMC 策略绕过 regime 过滤
+   if(signal.bypass_regime_filter)
+      return;
+   
+   if(signal.type != SIGNAL_EXIT)
+   {
+      signal.type = SIGNAL_NONE;
+      signal.source = ""; // 标记为被过滤信号
+   }
+}
+
+//+------------------------------------------------------------------+
+//| 信号分发处理（开仓/加仓/修改止损止盈）                           |
+//+------------------------------------------------------------------+
+void ProcessSignal(Signal &signal, RegimeState regime_state, RegimeSubType sub_type)
+{
+   switch(signal.type)
+   {
+      case SIGNAL_BUY:
+      case SIGNAL_SELL:
+      case SIGNAL_ADD_LONG:
+      case SIGNAL_ADD_SHORT:
+         ProcessOpenSignal(signal, regime_state, sub_type);
+         break;
+         
+      case SIGNAL_EXIT:
+         ManagePositionExit(signal, regime_state);
+         break;
+         
+      case SIGNAL_MODIFY_SL:
+         ProcessModifySL(signal, regime_state);
+         break;
+         
+      case SIGNAL_MODIFY_TP:
+         ProcessModifyTP(signal, regime_state);
+         break;
+         
+      default:
+         // 忽略其他信号类型
+         break;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| 处理开仓/加仓信号                                                |
+//+------------------------------------------------------------------+
+void ProcessOpenSignal(Signal &signal, RegimeState regime_state, RegimeSubType sub_type)
+{
+   Print("[EA] Processing opening signal. type=", signal.type, " source=", signal.source);
+   
+   // 仓位协调器检查
+   if(!pos_coord.AllowSignal(signal))
+   {
+      pos_coord.PrintState();
+      return;
+   }
+   
+   // AI网关过滤
+   double ai_score = 1.0;
+   if(!ai_gateway.Pass(signal, ai_score))
+   {
+      ai_gateway.PrintState(signal);
+      return;
+   }
+   
+   // 构建交易请求
+   TradeRequest req;
+   if(!risk_pipeline.BuildTrade(signal, req))
+   {
+      LogSignalFailure(signal, regime_state, "BuildTrade failed: " + risk_pipeline.GetBlockReason());
+      return;
+   }
+   
+   // 执行订单
+   if(executor.Execute(req, signal.source))
+   {
+      LogOrderSuccess(req, signal, regime_state, sub_type);
+      UpdatePostTradeState(signal, req);
+   }
+   else
+   {
+      LogOrderFailure(req, signal, regime_state, sub_type);
+   }
+   
+   // 重置信号（避免重复处理）
+   signal.type = SIGNAL_NONE;
+}
+
+//+------------------------------------------------------------------+
+//| 处理修改止损信号                                                 |
+//+------------------------------------------------------------------+
+void ProcessModifySL(Signal &signal, RegimeState regime_state)
+{
+   Print("[EA] Processing MODIFY_SL signal. source=", signal.source, 
+         " new_sl=", DoubleToString(signal.new_sl, _Digits));
+   
+   TradeRequest req;
+   if(!risk_pipeline.ValidateModifySL(signal, req))
+   {
+      Print("[EA] ModifySL validation failed: ", risk_pipeline.GetBlockReason());
+      signal.type = SIGNAL_NONE;
+      return;
+   }
+   
+   if(executor.ModifySL(req.new_sl, signal.source))
+   {
+      if(AlertOnOrderOpen)
+         Alert("止损修改成功: ", _Symbol, " 新SL=", DoubleToString(req.new_sl, _Digits));
+      RecordSignal(signal.type, signal.source, regime_filter.GetState());
+   }
+   else
+   {
+      Print("[EA] ModifySL execution failed.");
+   }
+   
+   signal.type = SIGNAL_NONE;
+}
+
+//+------------------------------------------------------------------+
+//| 处理修改止盈信号                                                 |
+//+------------------------------------------------------------------+
+void ProcessModifyTP(Signal &signal, RegimeState regime_state)
+{
+   Print("[EA] Processing MODIFY_TP signal. source=", signal.source,
+         " new_tp=", DoubleToString(signal.new_tp, _Digits));
+   
+   TradeRequest req;
+   if(!risk_pipeline.ValidateModifyTP(signal, req))
+   {
+      Print("[EA] ModifyTP validation failed: ", risk_pipeline.GetBlockReason());
+      signal.type = SIGNAL_NONE;
+      return;
+   }
+   
+   if(executor.ModifyTP(req.new_tp, signal.source))
+   {
+      if(AlertOnOrderOpen)
+         Alert("止盈修改成功: ", _Symbol, " 新TP=", DoubleToString(req.new_tp, _Digits));
+      RecordSignal(signal.type, signal.source, regime_filter.GetState());
+   }
+   else
+   {
+      Print("[EA] ModifyTP execution failed.");
+   }
+   
+   signal.type = SIGNAL_NONE;
+}
+
+//+------------------------------------------------------------------+
+//| 记录信号失败日志                                                 |
+//+------------------------------------------------------------------+
+void LogSignalFailure(const Signal &signal, RegimeState regime_state, string reason)
+{
+   string sig_dir = (signal.type==SIGNAL_BUY ? "BUY" :
+                    (signal.type==SIGNAL_SELL ? "SELL" : "OTHER"));
+   Print("[EA] ", reason, " source=", signal.source,
+         " dir=", sig_dir,
+         " price=", DoubleToString(signal.price,_Digits),
+         " sl=", DoubleToString(signal.sl,_Digits),
+         " tp=", DoubleToString(signal.tp,_Digits));
+   
+   RecordSignal(signal.type, signal.source, regime_state); 
+   RecordFeatures(signal.type, signal.source, regime_state);
+}
+
+//+------------------------------------------------------------------+
+//| 记录订单成功日志                                                 |
+//+------------------------------------------------------------------+
+void LogOrderSuccess(const TradeRequest &req, const Signal &signal, RegimeState regime_state, RegimeSubType sub_type)
+{
+   Print("[EA] Order executed. dir=",
+         (req.direction==TRADE_BUY?"BUY":"SELL"),
+         " entry_price=", DoubleToString(signal.price,_Digits),
+         " vol=", DoubleToString(req.volume,2),
+         " sl=", DoubleToString(req.sl,_Digits),
+         " tp=", DoubleToString(req.tp,_Digits));
+   
+   if(AlertOnOrderOpen)
+      Alert("开仓成功: ", _Symbol, " ", (req.direction==TRADE_BUY?"BUY":"SELL"),
+            " vol=", DoubleToString(req.volume,2),
+            " entry_price=", DoubleToString(signal.price,_Digits),
+            " sl=", DoubleToString(signal.sl,_Digits),
+            " tp=", DoubleToString(req.tp,_Digits),
+            " regime_state=", RegimeStateToString(regime_state),
+            " source=", signal.source,
+            " sub_type=", RegimeSubTypeToString(sub_type));
+}
+
+//+------------------------------------------------------------------+
+//| 更新交易后状态（风控、仓位追踪器）                               |
+//+------------------------------------------------------------------+
+void UpdatePostTradeState(const Signal &signal, const TradeRequest &req)
+{
+   risk_pipeline.OnTradeExecuted(signal);
+   pos_coord.OnPositionOpened(signal);
+   
+   // 初始化仓位追踪器
+   if(PositionSelect(_Symbol))
+   {
+      long dir = PositionGetInteger(POSITION_TYPE);
+      pos_coord.InitTracker(signal.price, req.volume, dir, signal.source);
+   }
+   
+   RecordSignal(signal.type, signal.source, regime_filter.GetState()); 
+   RecordFeatures(signal.type, signal.source, regime_filter.GetState());
+}
+
+//+------------------------------------------------------------------+
+//| 记录订单失败日志                                                 |
+//+------------------------------------------------------------------+
+void LogOrderFailure(const TradeRequest &req, const Signal &signal, RegimeState regime_state, RegimeSubType sub_type)
+{
+   if(AlertOnOrderFail)
+   {
+      RecordSignal(signal.type, signal.source, regime_state); 
+      RecordFeatures(signal.type, signal.source, regime_state);
+      Alert("开仓失败: ", _Symbol, " ", (req.direction==TRADE_BUY?"BUY":"SELL"), 
+            " sub_type=", RegimeSubTypeToString(sub_type),
+            " source=", signal.source, 
+            " regime_state=", RegimeStateToString(regime_state));
+   }
 }
 
 //---------------- 定时器 ----------------
@@ -592,7 +806,7 @@ void UpdateStatusPanel()
       time_reason = "交易时间限制";
 
    // 统一从 RiskPipeline 获取结构冷却状态
-   bool sc_active = risk_pipeline.IsStructuralCooldownActive();
+   bool sc_active = risk_pipeline.IsStructuralCooldownActive();   
    string sc_reason = risk_pipeline.GetStructuralCooldownReason();
    int sc_remaining = risk_pipeline.GetStructuralCooldownRemaining();
 
@@ -606,54 +820,122 @@ void UpdateStatusPanel()
                        sc_active, sc_reason, sc_remaining, regime_state_str, subtype_str, q_score);
 }
 
-void ManagePositionExitOnBar(Signal &signal, RegimeState regime_state){
+//+------------------------------------------------------------------+
+//| 持仓退出管理（Tick级别调用）
+//+------------------------------------------------------------------+
+void ManagePositionExit(Signal &signal, RegimeState regime_state)
+{
    if(pos_coord.HasPosition()) // 如果当前有仓位，先检查是否需要平仓
    {
       bool should_close = risk_pipeline.ShouldClosePosition(signal);
       if(should_close) //需要平仓
       {
          bool closed = false;
+         
+         // 平仓前保存仓位信息
+         double entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
+         double pos_vol = PositionGetDouble(POSITION_VOLUME);
+         long pos_type = PositionGetInteger(POSITION_TYPE);
+         ulong pos_ticket = PositionGetInteger(POSITION_TICKET);
+         bool is_full_close = false;  // 是否为全部平仓
 
          if(signal.type == SIGNAL_EXIT && signal.exit_volume > 0.0)
          {
-            double pos_vol = PositionGetDouble(POSITION_VOLUME);
             double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
             double min_vol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
             double close_vol = MathMin(signal.exit_volume, pos_vol);
 
             if(close_vol >= pos_vol - step * 0.5)
+            {
                closed = executor.Close();
+               is_full_close = true;
+            }
             else if(close_vol >= min_vol)
+            {
                closed = executor.ClosePartial(close_vol);
+               is_full_close = false;
+            }
             else
+            {
                closed = executor.Close();
+               is_full_close = true;
+            }
          }
          else
          {
             closed = executor.Close();
+            is_full_close = true;
          } 
 
          if(closed)
          {
-            if(!PositionSelect(_Symbol))
+            // 从历史成交获取本次平仓盈亏
+            double this_profit = 0, this_swap = 0, this_comm = 0, this_vol = 0, this_price = 0;
+            if(HistorySelect(0, TimeCurrent() + 60))
             {
-               risk_pipeline.OnPositionClosed();  // 只有当仓位确实关闭后才调用这个函数，防止误判
-               pos_coord.OnPositionClosed();      // 更新仓位协调器状态
-               if(AlertOnOrderClose)
-                  Alert("平仓完成: ", _Symbol);
-                  pos_coord.PrintState();
-                  RecordSignal(SIGNAL_EXIT, signal.source, regime_state); 
-                  RecordFeatures(SIGNAL_EXIT, signal.source, regime_state);
-                  signal.type = SIGNAL_NONE; // 平仓信号处理完成，重置信号类型，防止后续重复处理
+               int total = HistoryDealsTotal();
+               for(int i = total - 1; i >= 0; i--)
+               {
+                  ulong deal_ticket = HistoryDealGetTicket(i);
+                  if(deal_ticket > 0)
+                  {
+                     long deal_entry = HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
+                     if(deal_entry == DEAL_ENTRY_OUT || deal_entry == DEAL_ENTRY_OUT_BY)
+                     {
+                        this_profit = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT);
+                        this_swap = HistoryDealGetDouble(deal_ticket, DEAL_SWAP);
+                        this_comm = HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
+                        this_vol = HistoryDealGetDouble(deal_ticket, DEAL_VOLUME);
+                        this_price = HistoryDealGetDouble(deal_ticket, DEAL_PRICE);
+                        break;
+                     }
+                  }
+               }
             }
-            else
+            
+            // 更新追踪器（如果追踪器未激活，使用当前仓位信息初始化）
+            if(!pos_coord.IsTrackerActive())
             {
-               pos_coord.SyncFromTerminal(); // 如果平仓后仓位仍然存在，可能是部分平仓或平仓失败，强制同步状态以防止不一致
+               pos_coord.InitTracker(entry_price, pos_vol + this_vol, pos_type, signal.source);
+            }
+            pos_coord.AddCloseResult(this_profit, this_swap, this_comm, this_vol);
+            pos_coord.PrintCloseResult(this_profit, this_vol);
+            
+            if(!PositionSelect(_Symbol))  // 全部平仓完成
+            {
+               risk_pipeline.OnPositionClosed();
+               pos_coord.OnPositionClosed();
+               
+               if(AlertOnOrderClose)
+               {
+                  double net = pos_coord.GetTrackerNetProfit();
+                  string net_sign = (net >= 0 ? "+" : "");
+                  Alert("平仓完成: ", _Symbol, " 净盈亏: ", net_sign, DoubleToString(net, 2));
+               }
+               
+               pos_coord.ResetTracker();
                pos_coord.PrintState();
                RecordSignal(SIGNAL_EXIT, signal.source, regime_state); 
                RecordFeatures(SIGNAL_EXIT, signal.source, regime_state);
-               signal.type = SIGNAL_NONE; // 无论平仓成功与否都重置信号类型，防止重复处理
-               Print("[EA] ", signal.source, " Position still exists after close attempt. Syncing state."); // 如果平仓失败，发出警报
+               signal.type = SIGNAL_NONE;
+            }
+            else  // 部分平仓
+            {
+               // 检查是否需要同步修改止损（保本止损）
+               if(signal.sl_on_exit > 0 && PositionSelect(_Symbol))
+               {
+                  string sl_source = signal.source + "_保本";
+                  if(executor.ModifySL(signal.sl_on_exit, sl_source))
+                  {
+                     Print("[EA] 部分平仓后同步修改止损: ", DoubleToString(signal.sl_on_exit, _Digits));
+                  }
+               }
+               
+               pos_coord.SyncFromTerminal();
+               pos_coord.PrintState();
+               RecordSignal(SIGNAL_EXIT, signal.source, regime_state); 
+               RecordFeatures(SIGNAL_EXIT, signal.source, regime_state);
+               signal.type = SIGNAL_NONE;
             }
          }
          else
@@ -662,9 +944,9 @@ void ManagePositionExitOnBar(Signal &signal, RegimeState regime_state){
             pos_coord.PrintState();
             RecordSignal(SIGNAL_EXIT, signal.source, regime_state); 
             RecordFeatures(SIGNAL_EXIT, signal.source, regime_state);
-            signal.type = SIGNAL_NONE; // 无论平仓成功与否都重置信号类型，防止重复处理
+            signal.type = SIGNAL_NONE;
             if(AlertOnOrderFail)
-               Alert("平仓失败: ", _Symbol); // 如果平仓失败，发出警报
+               Alert("平仓失败: ", _Symbol);
          }
       }
    }

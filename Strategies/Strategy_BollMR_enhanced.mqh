@@ -15,6 +15,11 @@ private:
     ulong  exit_ticket;
     double exit_entry_volume;
     int    exit_stage;
+    double m_trailing_protect;
+    double protect_ATR_multiplier;
+    double trailingATR;
+    double m_entry_price;       // 持久保存入场价
+    double m_sl_on_exit;        // 部分平仓时同步修改止损
 
 public:
     bool Init()
@@ -43,6 +48,8 @@ public:
         exit_ticket = 0;
         exit_entry_volume = 0.0;
         exit_stage = 0;
+        m_entry_price = 0.0;
+        m_sl_on_exit = 0.0;
 
         return true;
     }
@@ -108,10 +115,12 @@ public:
                 Print("[BollMR] Exit signal triggered.");
                 signal.type = SIGNAL_EXIT;
                 signal.exit_volume = exit_volume;
+                signal.sl_on_exit = m_sl_on_exit;  // 传递止损修改请求
                 FillSignal(signal, SIGNAL_EXIT);
 
                 Print("[BollMR] Exit signal filled. price=", signal.price,
-                    " sl=", signal.sl, " tp=", signal.tp);
+                    " sl=", signal.sl, " tp=", signal.tp,
+                    " sl_on_exit=", DoubleToString(m_sl_on_exit, _Digits));
 
                 return signal;
             }
@@ -134,24 +143,51 @@ public:
     {
         if(m_regime_filter == NULL)
             return true;  // 无 RF 时允许通过
-        
+            
         RegimeSubType sub_type = m_regime_filter.GetSubType();
         
         switch(sub_type)
         {
             case SUBTYPE_RN_NORMAL:    // 正常震荡 - 最佳
-            case SUBTYPE_RL_LOW:       // 低波动 - 可以
-            case SUBTYPE_RVA_NEWS:     // 消息震荡 - 虽然波动大，但也可能有回归机会，先允许通过观察表现
-            case SUBTYPE_TN_MILD:      // 温和趋势 - 谨慎，可以，但要配合趋势过滤使用
+            case SUBTYPE_RL_LOW:       // 低波动 - 谨慎
+            case SUBTYPE_RVA_NEWS:     // 消息震荡 - 可以
+            case SUBTYPE_RVB_FALSE:    // 假突破密集 - 信号不可靠
                 return true;
+            case SUBTYPE_TN_MILD:      // 温和趋势 - 可以
             case SUBTYPE_TVB_TREND:    // 强趋势 - 容易逆势
             case SUBTYPE_TVA_EMOTION:  // 情绪脉冲 - 波动剧烈
-            case SUBTYPE_RVB_FALSE:    // 假突破密集 - 信号不可靠
-            
                 return false;
             
             default:
                 return true;  // 未知类型允许通过
+        }
+    }
+
+    void ApplySubTypeParams()
+    {
+        RegimeSubType sub_type = m_regime_filter.GetSubType();
+        
+        switch(sub_type)
+        {
+            case SUBTYPE_RN_NORMAL: 
+            case SUBTYPE_RL_LOW:
+                protect_ATR_multiplier = 0.6; 
+                trailingATR          = 2.5;
+                break;
+                
+            case SUBTYPE_RVA_NEWS: 
+                protect_ATR_multiplier = 0.45;
+                trailingATR          = 1.8; 
+                break;
+                
+            case SUBTYPE_TN_MILD:
+                protect_ATR_multiplier = 0.5;
+                trailingATR          = 2.0;
+                break;
+                
+            default:
+                protect_ATR_multiplier = 0.5;
+                trailingATR          = 2.0;
         }
     }
     
@@ -176,17 +212,21 @@ public:
         }
         else if(mode == "B") // 放宽入场条件，允许直接在下轨附近入场（影线回归增强版，更激进，但可能更早捕捉机会）
         {
-            if(!LongTrendOK())
-                return false;
+            // if(!LongTrendOK())
+            //     return false;
             bool wick_break = LowAt(2) < GetBollLower(2);   // 影线破下轨
 
             bool close_recover = CloseAt(1) > GetBollLower(1); // 当前K线收回轨内
 
+            bool bullish_body = CloseAt(1) > OpenAt(1); 
+
+            bool deep_enough  = CloseAt(1) <= GetBollMiddle(1);
+
             return (
                     wick_break &&
                     close_recover &&
-                    CloseAt(1) > OpenAt(1) && // 当前K线收阳
-                    CloseAt(1) <= GetBollMiddle(1) &&
+                    bullish_body &&
+                    deep_enough &&
                     MiddleUpClosed() &&
                     VolatilityOK());
         }
@@ -199,9 +239,10 @@ public:
                 return false;
 
             return (
-                CloseAt(2) < GetBollLower(2) &&
+                LowAt(2) < GetBollLower(2) &&
                 CloseAt(1) > GetBollLower(1) &&
                 CloseAt(1) <= GetBollMiddle(1) &&
+                MiddleUpClosed() &&
                 VolatilityOK());
         }
         else
@@ -255,15 +296,22 @@ public:
         }
         else if(mode == "B") // 放宽入场条件，允许直接在上轨附近入场（影线回归增强版，更激进，但可能更早捕捉机会）
         {
+            // if(!ShortTrendOK())
+            //     return false;
+
             bool wick_break = HighAt(2) > GetBollUpper(2);   // 前2根k线影线破上轨
 
             bool close_recover = CloseAt(1) < GetBollUpper(1); // 前1根K线收回轨内
+            
+            bool bearish_body = CloseAt(1) < OpenAt(1); 
+
+            bool deep_enough  = CloseAt(1) >= GetBollMiddle(1);
 
             return (
                     wick_break &&
                     close_recover &&
-                    CloseAt(1) < OpenAt(1) && // 前1根K线收阴
-                    CloseAt(1) >= GetBollMiddle(1) &&
+                    bearish_body &&
+                    deep_enough &&
                     MiddleDownClosed() &&
                     VolatilityOK());
         }
@@ -276,9 +324,10 @@ public:
                 return false;
 
             return (
-                CloseAt(2) > GetBollUpper(2) && // 前2根K线收盘在上轨外
+                HighAt(2) > GetBollUpper(2) && // 前2根K线收盘在上轨外
                 CloseAt(1) < GetBollUpper(1) && // 前1根K线收盘回到轨内
                 CloseAt(1) >= GetBollMiddle(1) &&
+                MiddleDownClosed() &&
                 VolatilityOK()); // 波动率过滤
         }
         else
@@ -545,110 +594,217 @@ public:
 
 public:
     bool HasExitSignal(double &exit_volume)
-    {
-        exit_volume = 0.0;
+{
+    ApplySubTypeParams();   // 你的动态参数保持
 
-        if(!PositionSelect(_Symbol)) // 无持仓
+    exit_volume = 0.0;
+    m_sl_on_exit = 0.0;  // 每次重置
+
+    if(!PositionSelect(_Symbol))
+    {
+        exit_ticket = 0;
+        exit_entry_volume = 0.0;
+        exit_stage = 0;
+        m_trailing_protect = 0.0;
+        m_entry_price = 0.0;
+        return false;
+    }
+
+    ulong ticket = (ulong)PositionGetInteger(POSITION_TICKET);
+    double current_volume = PositionGetDouble(POSITION_VOLUME);  // 当前实际仓位
+
+    if(ticket != exit_ticket)
+    {
+        exit_ticket = ticket;
+        exit_entry_volume = current_volume;
+        m_entry_price = PositionGetDouble(POSITION_PRICE_OPEN);  // ← 持久保存入场价
+        exit_stage = 0;
+        m_trailing_protect = 0.0;
+        PrintFormat("[BollMR Exit] 新仓位初始化 | Ticket=%I64u | Entry=%.5f | Vol=%.2f", ticket, m_entry_price, current_volume);
+    }
+    else
+    {
+        // 同一仓位，更新实际仓位（部分平仓后会变小）
+        exit_entry_volume = current_volume;
+    }
+
+    ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+    double middle_ref = GetBollMiddle(1);
+    double bid_now    = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double bid_prev   = iClose(_Symbol, _Period, 1);
+    double atr        = GetATR(1);
+
+    // ====================== BUY 单 ======================
+    if(type == POSITION_TYPE_BUY)
+    {
+        double level1_low  = middle_ref - atr * BollMR_MidATRTP;   // 中轨下方保本触发点
+        double level1_up   = middle_ref + atr * BollMR_MidATRTP;   // 中轨上方部分止盈
+        double level2      = middle_ref + atr * BollMR_MidATRTP2;
+
+        // 1. 第一次抵达中轨下方 → 设置保本（真正生效！）
+        if(exit_stage == 0 && bid_now >= level1_low)
         {
-            exit_ticket = 0;
-            exit_entry_volume = 0.0;
-            exit_stage = 0;
+            double new_protect = m_entry_price - atr * protect_ATR_multiplier; 
+            m_trailing_protect = MathMax(m_trailing_protect, new_protect);   // ← 保本保护生效
+            exit_volume = exit_entry_volume * BollMR_PartialExit1;
+            double current_sl = PositionGetDouble(POSITION_SL);
+            m_sl_on_exit = current_sl + atr * 0.3;
+            exit_stage = 1;
+            PrintFormat("[BollMR buy Exit] BUY 抵达中轨下方 → 部分平仓 %.5f 手 | 平仓价格=%.5f | protect=%.5f | SL %.5f → %.5f (+%.5f) | stage→1", 
+                        exit_volume, bid_now, m_trailing_protect, current_sl, m_sl_on_exit, atr * 0.05);
+            return true;
+        }
+
+        // 2. 保护位检查（从stage=1开始保护，stage=4后不再重复触发）
+        if(exit_stage >= 1 && exit_stage < 4 && bid_now < m_trailing_protect)
+        {
+            exit_volume = exit_entry_volume;
+            exit_stage = 4;
+            PrintFormat("[BollMR buy Exit] BUY 保护位触发全平 %.5f 手 | 平仓价格=%.5f | protect=%.5f | stage→4", exit_volume, bid_now, m_trailing_protect);
+            return true;
+        }
+
+        // 3. 动能强 → 部分止盈
+        if(exit_stage == 1 && bid_now >= level1_up)
+        {
+            double new_protect = middle_ref - atr * protect_ATR_multiplier;
+            m_trailing_protect = MathMax(m_trailing_protect, new_protect);
+            // exit_volume = exit_entry_volume * BollMR_PartialExit1;
+            exit_stage = 2;
+            PrintFormat("[BollMR buy Exit] BUY level1 部分平仓 %.5f 手 | 平仓价格=%.5f | protect=%.5f | stage→2", exit_volume, bid_now, m_trailing_protect);
+            return false;
+        }
+        if(exit_stage == 2 && bid_now >= level2)
+        {
+            double new_protect = middle_ref;
+            m_trailing_protect = MathMax(m_trailing_protect, new_protect);
+            exit_volume = exit_entry_volume * BollMR_PartialExit2;
+            exit_stage = 3;
+            PrintFormat("[BollMR buy Exit] BUY level2 部分平仓 %.5f 手 | 平仓价格=%.5f | protect=%.5f | stage→3", exit_volume, bid_now, m_trailing_protect);
+            return true;
+        }
+
+        // 4. 上轨突破 → 追踪止损（吃肉）
+        if(bid_now >= GetBollUpper(0) && exit_stage < 5)
+        {
+            double new_protect = bid_now - atr * trailingATR;
+            m_trailing_protect = MathMax(m_trailing_protect, new_protect);
+            exit_volume = exit_entry_volume;
+            exit_stage = 5;
+            PrintFormat("[BollMR buy Exit] BUY 上轨突破！追踪模式部分平仓 %.5f 手 | 平仓价格=%.5f | protect=%.5f | stage→5", exit_volume, bid_now, m_trailing_protect);
+            return true;
+        }
+
+        if(exit_stage == 5)
+        {
+            double new_protect = bid_now - atr * trailingATR;
+            if(new_protect > m_trailing_protect + atr * BollMR_TrailingStep)
+                m_trailing_protect = new_protect;
+
+            if(bid_now <= m_trailing_protect)
+            {
+                exit_volume = exit_entry_volume;
+                exit_stage = 4;
+                PrintFormat("[BollMR buy Exit] BUY 追踪止损全平 %.5f 手 | 平仓价格=%.5f", exit_volume, bid_now);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    // ====================== SELL 单（完全对称） ======================
+    if(type == POSITION_TYPE_SELL)
+    {
+        double level1_high = middle_ref + atr * BollMR_MidATRTP;   // 中轨上方保本触发点
+        double level1_down = middle_ref - atr * BollMR_MidATRTP;   // 中轨下方部分止盈
+        double level2      = middle_ref - atr * BollMR_MidATRTP2;
+
+        if(exit_stage == 0 && bid_now <= level1_high)
+        {
+           double new_protect = m_entry_price + atr * protect_ATR_multiplier; 
+           if(m_trailing_protect == 0.0)
+                m_trailing_protect = new_protect;
+            else
+                m_trailing_protect = MathMin(m_trailing_protect, new_protect);
+            exit_volume = exit_entry_volume * BollMR_PartialExit1;
+            double current_sl = PositionGetDouble(POSITION_SL);
+            m_sl_on_exit = current_sl - atr * 0.3;
+            exit_stage = 1;
+            PrintFormat("[BollMR sell Exit] SELL 抵达中轨上方 → 部分平仓 %.5f 手 | 平仓价格=%.5f | protect=%.5f | SL %.5f → %.5f (-%.5f) | stage→1", 
+                        exit_volume, bid_now, m_trailing_protect, current_sl, m_sl_on_exit, atr * 0.05);
+            return true;
+        }
+
+
+        // 保护位检查（stage=4后不再重复触发）
+        if(exit_stage >= 1 && exit_stage < 4 && bid_now > m_trailing_protect)
+        {
+            exit_volume = exit_entry_volume;
+            exit_stage = 4;
+            PrintFormat("[BollMR sell Exit] SELL 保护位触发全平 %.5f 手 | 平仓价格=%.5f | protect=%.5f", exit_volume, bid_now, m_trailing_protect);
+            return true;
+        }
+
+        if(exit_stage == 1 && bid_now <= level1_down)
+        {
+            double new_protect = middle_ref + atr * protect_ATR_multiplier;
+            m_trailing_protect = MathMin(m_trailing_protect, new_protect);
+            // exit_volume = exit_entry_volume * BollMR_PartialExit1;
+            exit_stage = 2;
+            PrintFormat("[BollMR sell Exit] SELL level1 部分平仓 %.5f 手 | 平仓价格=%.5f | protect=%.5f | stage→2", exit_volume, bid_now, m_trailing_protect);
+            return false;
+        }
+        if(exit_stage == 2 && bid_now <= level2)
+        {
+            double new_protect = middle_ref;
+            m_trailing_protect = MathMin(m_trailing_protect, new_protect);
+            exit_volume = exit_entry_volume * BollMR_PartialExit2;
+            exit_stage = 3;
+            PrintFormat("[BollMR sell Exit] SELL level2 部分平仓 %.5f 手 | 平仓价格=%.5f | protect=%.5f | stage→3", exit_volume, bid_now, m_trailing_protect);
+            return true;
+        }
+
+        if(bid_now <= GetBollLower(0) && exit_stage < 5)
+        {
+            double new_protect = bid_now + atr * trailingATR;
+            m_trailing_protect = MathMin(m_trailing_protect, new_protect);
+            exit_volume = exit_entry_volume;
+            exit_stage = 5;
+            PrintFormat("[BollMR sell Exit] SELL 下轨突破！追踪模式部分平仓 %.5f 手 | 平仓价格=%.5f | protect=%.5f | stage→5", exit_volume, bid_now, m_trailing_protect);
             return false;
         }
 
-        ulong ticket = (ulong)PositionGetInteger(POSITION_TICKET);
-        if(ticket != exit_ticket)
+        if(exit_stage == 5)
         {
-            exit_ticket = ticket;
-            exit_entry_volume = PositionGetDouble(POSITION_VOLUME);
-            exit_stage = 0;
-        }
-        // 防止刚开仓立刻被平掉
-        datetime open_time =
-            (datetime)PositionGetInteger(POSITION_TIME);
+            double new_protect = bid_now + atr * trailingATR;
+            if(new_protect < m_trailing_protect - atr * BollMR_TrailingStep)
+                m_trailing_protect = new_protect;
 
-        // if(TimeCurrent() - open_time < BollMR_ShortestClosingTime)
-        //     return false;
-
-        ENUM_POSITION_TYPE type =
-                (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-
-        double middle_ref  = GetBollMiddle(1);                    // 上一根已收盘 K 线中轨（固定阈值）
-        double bid_now  = SymbolInfoDouble(_Symbol, SYMBOL_BID); // 最新价
-        double bid_prev = iClose(_Symbol, _Period, 1);          // 前一根 K 线收盘价
-        double atr = GetATR(1);
-
-        if(type == POSITION_TYPE_BUY)
-        {  
-            if(!ReversionFailed())
+            if(bid_now >= m_trailing_protect)
             {
-                // 回落保护：用已收盘中轨作为固定阈值，避免当前中轨抖动
-                if(bid_prev >= middle_ref && bid_now < middle_ref)
-                {
-                    return true;
-                }
-
-                double level1 = middle_ref + atr * BollMR_MidATRTP;
-                double level2 = middle_ref + atr * BollMR_MidATRTP2;
-
-                if(exit_stage == 0 && bid_now >= level1)
-                {
-                    exit_volume = exit_entry_volume * BollMR_PartialExit1;
-                    exit_stage = 1;
-                    return true;
-                }
-
-                if(exit_stage == 1 && bid_now >= level2)
-                {
-                    exit_volume = exit_entry_volume * BollMR_PartialExit2;
-                    exit_stage = 2;
-                    return true;
-                }
-
-                if(bid_now >= GetBollUpper(1))
-                {
-                    exit_stage = 3;
-                    return true;
-                }
+                exit_volume = exit_entry_volume;
+                exit_stage = 4;
+                PrintFormat("[BollMR sell Exit] SELL 追踪止损全平 %.5f 手 | 平仓价格=%.5f", exit_volume, bid_now);
+                return true;
             }
+            return false;
         }
-
-        if(type == POSITION_TYPE_SELL)
-        {
-            if(!ReversionFailed())
-            {
-                // 回落保护：用已收盘中轨作为固定阈值，避免当前中轨抖动
-                if(bid_prev <= middle_ref && bid_now > middle_ref)
-                {
-                    return true;
-                }
-
-                double level1 = middle_ref - atr * BollMR_MidATRTP;
-                double level2 = middle_ref - atr * BollMR_MidATRTP2;
-
-                if(exit_stage == 0 && bid_now <= level1)
-                {
-                    exit_volume = exit_entry_volume * BollMR_PartialExit1;
-                    exit_stage = 1;
-                    return true;
-                }
-
-                if(exit_stage == 1 && bid_now <= level2)
-                {
-                    exit_volume = exit_entry_volume * BollMR_PartialExit2;
-                    exit_stage = 2;
-                    return true;
-                }
-
-                if(bid_now <= GetBollLower(1))
-                {
-                    exit_stage = 3;
-                    return true;
-                }
-            }
-        }
-        return false;
     }
+
+    // ====================== 极端高波动保护 ======================
+    if(ReversionFailed() && exit_stage >= 1)
+    {
+        if(GetATR(1) > GetATRMean(10, 1) * 2.0)
+        {
+            exit_volume = exit_entry_volume;
+            exit_stage = 4;
+            PrintFormat("[BollMR Exit] 极端ATR爆炸全平 %.5f 手 | ATR倍数=%.2f", exit_volume, GetATR(1)/GetATRMean(10,1));
+            return true;
+        }
+    }
+
+    return false;
+}
 };
 
 #endif // __STRATEGY_BOLL_MR_ENHANCED_MQH__

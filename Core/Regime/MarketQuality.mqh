@@ -54,6 +54,7 @@ private:
     double  m_high_history[];
     double  m_low_history[];
     int     m_history_count;
+    datetime m_last_bar_time;  // 记录最后更新的K线时间
     
 public:
     //+--------------------------------------------------------------
@@ -76,14 +77,16 @@ public:
         m_adx(25.0),
         m_q_score(0.5),
         m_is_tradable(true),
-        m_history_count(0)
+        m_history_count(0),
+        m_last_bar_time(0)
     {
-        ArraySetAsSeries(m_close_history, true);
-        ArraySetAsSeries(m_high_history, true);
-        ArraySetAsSeries(m_low_history, true);
+        // 先 Resize，再 SetAsSeries（顺序很重要！）
         ArrayResize(m_close_history, 100);
         ArrayResize(m_high_history, 100);
         ArrayResize(m_low_history, 100);
+        ArraySetAsSeries(m_close_history, true);
+        ArraySetAsSeries(m_high_history, true);
+        ArraySetAsSeries(m_low_history, true);
     }
     
     //+--------------------------------------------------------------
@@ -102,13 +105,60 @@ public:
         m_weight_eff = MQ_Weight_Eff;
         m_weight_fbr = MQ_Weight_FBR;
         m_weight_adx = MQ_Weight_ADX;
+        
+        // 预填充历史数据（从K线1开始往回）
+        PreloadHistory();
+    }
+    
+    //+--------------------------------------------------------------
+    //| 预填充历史数据
+    //+--------------------------------------------------------------
+    void PreloadHistory()
+    {
+        int bars_needed = (int)ArraySize(m_close_history);
+        int available = iBars(_Symbol, _Period);
+        
+        if(available < bars_needed)
+            bars_needed = available;
+        
+        for(int i = bars_needed - 1; i >= 1; i--)
+        {
+            double close = iClose(_Symbol, _Period, i);
+            double high = iHigh(_Symbol, _Period, i);
+            double low = iLow(_Symbol, _Period, i);
+            datetime bar_time = iTime(_Symbol, _Period, i);
+            
+            // 直接填充，不检测重复
+            if(m_history_count < ArraySize(m_close_history))
+                m_history_count++;
+            
+            // 移动数据
+            for(int j = m_history_count - 1; j > 0; j--)
+            {
+                m_close_history[j] = m_close_history[j-1];
+                m_high_history[j] = m_high_history[j-1];
+                m_low_history[j] = m_low_history[j-1];
+            }
+            m_close_history[0] = close;
+            m_high_history[0] = high;
+            m_low_history[0] = low;
+            m_last_bar_time = bar_time;
+        }
+        
+        Print("[MarketQuality] Preloaded history_count=", m_history_count);
     }
     
     //+--------------------------------------------------------------
     //| 更新价格数据
     //+--------------------------------------------------------------
-    void UpdatePrices(double close, double high, double low)
+    void UpdatePrices(double close, double high, double low, datetime bar_time)
     {
+        // 用时间戳检测新K线，避免重复添加
+        if(bar_time == m_last_bar_time)
+            return;
+        
+        m_last_bar_time = bar_time;
+        
         // 添加到历史数组
         if(m_history_count < ArraySize(m_close_history))
             m_history_count++;
@@ -134,7 +184,9 @@ public:
             return 0.5;
         
         // 净变动
-        double net_change = MathAbs(m_close_history[0] - m_close_history[m_efficiency_period - 1]);
+        double close0 = m_close_history[0];
+        double closeN = m_close_history[m_efficiency_period - 1];
+        double net_change = MathAbs(close0 - closeN);
         
         // 总波幅
         double total_range = 0.0;
@@ -201,10 +253,10 @@ public:
     //+--------------------------------------------------------------
     //| 更新计算
     //+--------------------------------------------------------------
-    bool Update(double close, double high, double low, double adx = 25.0)
+    bool Update(double close, double high, double low, double adx = 25.0, datetime bar_time = 0)
     {
-        // 更新价格历史
-        UpdatePrices(close, high, low);
+        // 更新价格历史（用时间戳检测新K线）
+        UpdatePrices(close, high, low, bar_time);
         
         // 计算效率
         m_efficiency = CalculateEfficiency();
@@ -230,14 +282,6 @@ public:
         
         // 判断是否可交易
         m_is_tradable = (m_q_score >= m_q_score_threshold);
-        
-        // 调试日志：每100根K线输出一次
-        // static int debug_counter = 0;
-        // if(++debug_counter % 300 == 0)
-        // {
-        //     Print(StringFormat("[MarketQuality] eff=%.3f fbr=%.3f adx=%.1f Q=%.3f (eff_s=%.2f fbr_s=%.2f adx_s=%.2f)",
-        //         m_efficiency, m_false_breakout_rate, m_adx, m_q_score, eff_score, fbr_score, adx_score));
-        // }
         
         return true;
     }

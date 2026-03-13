@@ -15,13 +15,15 @@ enum SignalType
     SIGNAL_SELL,       // 新开空仓
     SIGNAL_EXIT,       // 平仓
     SIGNAL_ADD_LONG,   // 加仓多
-    SIGNAL_ADD_SHORT   // 加仓空
+    SIGNAL_ADD_SHORT,  // 加仓空
+    SIGNAL_MODIFY_SL,  // 修改止损
+    SIGNAL_MODIFY_TP   // 修改止盈
 };
 
 // 信号结构体定义
 struct Signal
 {
-    SignalType type;   // BUY / SELL / NONE / ADD_LONG / ADD_SHORT / EXIT
+    SignalType type;   // BUY / SELL / NONE / ADD_LONG / ADD_SHORT / EXIT / MODIFY_SL / MODIFY_TP
     double confidence;       // 0.0 ~ 1.0
     string source;           // 哪个策略产生的
     datetime time;           // 信号时间
@@ -34,6 +36,16 @@ struct Signal
     // 结构冷却相关字段（由策略填充）
     double     atr;              // 入场时ATR
     double     structure_price;  // 结构点价格
+    
+    // 修改止损/止盈专用字段
+    double     new_sl;           // 新止损价（用于 MODIFY_SL）
+    double     new_tp;           // 新止盈价（用于 MODIFY_TP）
+    
+    // 平仓时同步修改止损（用于 EXIT 信号）
+    double     sl_on_exit;       // 平仓后设置新止损（<=0 表示不修改）
+
+    // 策略过滤控制
+    bool       bypass_regime_filter;  // 是否绕过 regime 过滤（SMC 策略用）
 
     Signal()
     {
@@ -48,6 +60,10 @@ struct Signal
         exit_volume = 0.0;
         atr = 0.0;
         structure_price = 0.0;
+        new_sl = 0.0;
+        new_tp = 0.0;
+        sl_on_exit = 0.0;
+        bypass_regime_filter = false;  // 默认需要 regime 过滤
     }
     
     // 辅助方法：判断是否为加仓信号
@@ -66,6 +82,12 @@ struct Signal
     bool IsShortSignal() const
     {
         return (type == SIGNAL_SELL || type == SIGNAL_ADD_SHORT);
+    }
+    
+    // 辅助方法：判断是否为修改信号
+    bool IsModifySignal() const
+    {
+        return (type == SIGNAL_MODIFY_SL || type == SIGNAL_MODIFY_TP);
     }
 };
 
